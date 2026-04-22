@@ -12,6 +12,8 @@
     "importHelpers": true,
     "target": "ES2022",
     "module": "ES2022",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
     "useDefineForClassFields": false,
     "lib": ["ES2022", "dom"]
   },

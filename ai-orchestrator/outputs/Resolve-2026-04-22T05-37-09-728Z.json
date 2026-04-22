@@ -1,0 +1,17 @@
+{
+  "task_understanding": "The task is empty — only the word 'Resolve' is provided with no description, user story, or specific requirements. Without actionable content, it is impossible to determine scope, required agents, or implementation details.",
+  "breakdown": {
+    "frontend": null,
+    "backend": null,
+    "qa": null
+  },
+  "assigned_agents": [],
+  "missing_requirements": [
+    "No task description provided. Please specify the requirement, feature, bug, or enhancement in clear, actionable terms (e.g., 'Add SMS OTP login for businesses with fallback email', 'Fix order creation race condition in checkout flow', etc.)."
+  ],
+  "agent_instructions": {
+    "frontend": null,
+    "backend": null,
+    "qa": null
+  }
+}

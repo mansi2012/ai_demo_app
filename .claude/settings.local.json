@@ -7,7 +7,13 @@
       "Bash(npx shadcn@latest init --defaults)",
       "Bash(npx shadcn@latest add input checkbox dialog card badge --yes)",
       "Bash(npx tsc:*)",
-      "WebFetch(domain:resources.leadgenman.com)"
+      "WebFetch(domain:resources.leadgenman.com)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(npm run *)",
+      "Bash(node --check orchestrator.js)",
+      "Bash(node --check agents/backendAgent.js)",
+      "Bash(node --check agents/frontendAgent.js)",
+      "Bash(node --check utils/claude.js)"
     ],
     "additionalDirectories": [
       "d:\\2026\\AI PROJECTS\\test project - 2503\\.claude",

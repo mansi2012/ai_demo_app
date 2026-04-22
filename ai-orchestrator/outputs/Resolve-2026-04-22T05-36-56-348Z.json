@@ -1,0 +1,17 @@
+{
+  "task_understanding": "The task description provided is just the word 'Resolve' with no further details, making it impossible to determine the intended feature, bug fix, or implementation scope.",
+  "breakdown": {
+    "frontend": null,
+    "backend": null,
+    "qa": null
+  },
+  "assigned_agents": [],
+  "missing_requirements": [
+    "Specific requirement or feature description to implement or resolve"
+  ],
+  "agent_instructions": {
+    "frontend": null,
+    "backend": null,
+    "qa": null
+  }
+}

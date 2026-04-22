@@ -15,7 +15,7 @@ const config = {
   },
   db: {
     dialect: process.env.DB_DIALECT || 'mysql',
-    host: process.env.DB_HOST || 'localhost',
+    host: process.env.DB_HOST || '192.168.1.130',
     port: toInt(process.env.DB_PORT, 3306),
     database: process.env.DB_NAME,
     username: process.env.DB_USERNAME,
