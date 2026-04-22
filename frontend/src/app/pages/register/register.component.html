@@ -1,0 +1,92 @@
+<app-auth-shell title="Create your account" subtitle="It only takes a minute">
+  <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-5" novalidate>
+    @if (serverError()) {
+      <div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        {{ serverError() }}
+      </div>
+    }
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <label for="firstName" class="form-label">First name</label>
+        <input
+          id="firstName"
+          type="text"
+          autocomplete="given-name"
+          class="form-input"
+          formControlName="firstName"
+        />
+        @if (controlError('firstName'); as err) {
+          <p class="form-error">{{ err }}</p>
+        }
+      </div>
+      <div>
+        <label for="lastName" class="form-label">Last name</label>
+        <input
+          id="lastName"
+          type="text"
+          autocomplete="family-name"
+          class="form-input"
+          formControlName="lastName"
+        />
+        @if (controlError('lastName'); as err) {
+          <p class="form-error">{{ err }}</p>
+        }
+      </div>
+    </div>
+
+    <div>
+      <label for="username" class="form-label">Username</label>
+      <input
+        id="username"
+        type="text"
+        autocomplete="username"
+        class="form-input"
+        formControlName="username"
+        placeholder="jane.doe"
+      />
+      @if (controlError('username'); as err) {
+        <p class="form-error">{{ err }}</p>
+      }
+    </div>
+
+    <div>
+      <label for="email" class="form-label">Email address</label>
+      <input
+        id="email"
+        type="email"
+        autocomplete="email"
+        class="form-input"
+        formControlName="email"
+        placeholder="jane@example.com"
+      />
+      @if (controlError('email'); as err) {
+        <p class="form-error">{{ err }}</p>
+      }
+    </div>
+
+    <div>
+      <label for="password" class="form-label">Password</label>
+      <input
+        id="password"
+        type="password"
+        autocomplete="new-password"
+        class="form-input"
+        formControlName="password"
+        placeholder="At least 8 characters"
+      />
+      @if (controlError('password'); as err) {
+        <p class="form-error">{{ err }}</p>
+      }
+    </div>
+
+    <button type="submit" class="btn-primary w-full" [disabled]="submitting()">
+      {{ submitting() ? 'Creating account…' : 'Create account' }}
+    </button>
+
+    <p class="text-center text-sm text-slate-600">
+      Already have an account?
+      <a routerLink="/login" class="font-medium text-brand-600 hover:text-brand-700">Sign in</a>
+    </p>
+  </form>
+</app-auth-shell>

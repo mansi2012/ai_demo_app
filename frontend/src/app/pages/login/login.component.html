@@ -1,0 +1,48 @@
+<app-auth-shell title="Welcome back" subtitle="Sign in to continue to your dashboard">
+  <form [formGroup]="form" (ngSubmit)="onSubmit()" class="space-y-5" novalidate>
+    @if (serverError()) {
+      <div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        {{ serverError() }}
+      </div>
+    }
+
+    <div>
+      <label for="identifier" class="form-label">Username or Email</label>
+      <input
+        id="identifier"
+        type="text"
+        autocomplete="username"
+        class="form-input"
+        formControlName="identifier"
+        placeholder="jane.doe or jane@example.com"
+      />
+      @if (controlInvalid('identifier')) {
+        <p class="form-error">Username or email is required.</p>
+      }
+    </div>
+
+    <div>
+      <label for="password" class="form-label">Password</label>
+      <input
+        id="password"
+        type="password"
+        autocomplete="current-password"
+        class="form-input"
+        formControlName="password"
+        placeholder="••••••••"
+      />
+      @if (controlInvalid('password')) {
+        <p class="form-error">Password is required.</p>
+      }
+    </div>
+
+    <button type="submit" class="btn-primary w-full" [disabled]="submitting()">
+      {{ submitting() ? 'Signing in…' : 'Sign in' }}
+    </button>
+
+    <p class="text-center text-sm text-slate-600">
+      Don't have an account?
+      <a routerLink="/register" class="font-medium text-brand-600 hover:text-brand-700">Create one</a>
+    </p>
+  </form>
+</app-auth-shell>

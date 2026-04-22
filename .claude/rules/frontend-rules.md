@@ -1,0 +1,31 @@
+---
+description: Rules that apply when working in the frontend/ directory
+globs:
+  - "frontend/**"
+---
+
+- Stack: Angular 19 standalone components + TypeScript (strict) + Tailwind CSS v3 + ReactiveFormsModule + Signals + RxJS
+- Standalone components only — no NgModules. Every component has `standalone: true` in its decorator
+- `ChangeDetectionStrategy.OnPush` on every component — no exceptions
+- Signals (`signal`, `computed`, `input`, `input.required`) for component state; prefer them over class fields + `BehaviorSubject` where possible
+- Reactive forms only (`ReactiveFormsModule`, `FormBuilder`, `FormGroup`) — never use template-driven `[(ngModel)]` or bare `ngModel`
+- Use `fb.nonNullable.group({...})` so form values are typed as non-null
+- Dependency injection via `inject(Service)` — do not use constructor injection in new code
+- Routing:
+  - Lazy load every page with `loadComponent: () => import('...').then(m => m.Foo)` in `app.routes.ts`
+  - Use functional guards (`CanActivateFn`) — `authGuard` for protected routes, `guestGuard` for login/register
+  - Return a `UrlTree` from guards to redirect, not booleans + manual `router.navigate`
+- HTTP:
+  - Use `HttpClient` from `@angular/common/http`
+  - Register interceptors as functional interceptors through `provideHttpClient(withInterceptors([...]))`
+  - All API URLs go through `environment.apiUrl` from `src/environments/environment*.ts` — never hardcode `http://localhost:...`
+  - Auth token is attached by `authInterceptor`; 401 responses trigger `auth.logout()` + redirect to `/login` (already wired — don't duplicate elsewhere)
+- Folder structure:
+  - `src/app/core/` — app-wide singletons: `services/`, `guards/`, `interceptors/`, `models/`
+  - `src/app/shared/` — reusable standalone components/directives/pipes used across pages
+  - `src/app/pages/<name>/` — one folder per route with `.component.ts` + `.component.html`
+- Templates: use Angular's built-in control flow (`@if`, `@for`, `@switch`) — not `*ngIf` / `*ngFor`
+- Every user-facing view supports Loading, Empty, and Error states
+- Shared TypeScript types live in `src/app/core/models/*.model.ts` and are used on both form payloads and API responses so contracts stay in sync
+- Don't store auth or session state in multiple places — read it from `AuthService` (signals), never from `localStorage` directly in components
+- No `any`. If a third-party type is missing, declare a minimal local interface
