@@ -5,9 +5,25 @@ import { runBackendAgent } from './agents/backendAgent.js';
 import { runQAAgent } from './agents/qaAgent.js';
 import { callLLM } from './utils/callLLM.js';
 import { writeProjectFiles } from './utils/writeFiles.js';
-import { askYesNo, askText, askChoice, askYesNoOther } from './utils/promptUser.js';
+import * as cliPrompter from './utils/promptUser.js';
 import { extractJSONObject } from './utils/parseAgentJSON.js';
 import * as git from './utils/gitActions.js';
+
+// Prompter is swappable — CLI by default, overridden by the web server.
+let activePrompter = cliPrompter;
+export function setPrompter(p) { activePrompter = p; }
+export function resetPrompter() { activePrompter = cliPrompter; }
+
+// Wrappers that always go through the currently-active prompter
+const askYesNo = (...args) => activePrompter.askYesNo(...args);
+const askText = (...args) => activePrompter.askText(...args);
+const askChoice = (...args) => activePrompter.askChoice(...args);
+const askYesNoOther = (...args) => activePrompter.askYesNoOther(...args);
+const askBatch = (...args) => {
+  // Prefer prompter-supplied askBatch; fall back to the CLI helper if absent
+  if (typeof activePrompter.askBatch === 'function') return activePrompter.askBatch(...args);
+  return cliPrompter.askBatch(...args);
+};
 
 /**
  * Ask the LLM to rephrase the user's task for clarity without changing intent.
@@ -73,7 +89,12 @@ async function confirmRefinedTask(rawTask) {
   console.log(refined);
   if (notes) console.log(`\n(note: ${notes})`);
 
-  const answer = await askYesNoOther('\nUse the refined task?');
+  const answer = await askYesNoOther('Use the refined task?', {
+    kind: 'refinement',
+    original: rawTask,
+    refined,
+    notes,
+  });
 
   if (answer === 'Yes') {
     console.log('[orchestrator] Using refined task.');
@@ -116,50 +137,47 @@ If unsure, still return valid JSON.
 }
 
 /**
- * Ask the human a single missing-requirement question. Supports:
- *  - structured objects: { question, type: "choice"|"yesno", options? }
- *  - plain strings (legacy shape) — prompted as free text
- * Returns { question, answer } with both as strings.
+ * Normalise a missing_requirement entry to { question, type, options }.
+ * Handles the legacy string shape for backwards compat.
  */
-async function askMissingRequirement(req) {
+function normaliseRequirement(req) {
   if (typeof req === 'string') {
-    const answer = await askText(`\n${req}\nYour answer:`);
-    return { question: req, answer: answer || '(no answer provided)' };
+    return { question: req, type: 'text', options: [] };
   }
-
-  const question = req.question ?? '(missing question text)';
-  const type = req.type ?? 'choice';
-
-  if (type === 'yesno') {
-    const answer = await askYesNoOther(question);
-    return { question, answer };
-  }
-
-  const answer = await askChoice(question, req.options ?? []);
-  return { question, answer };
+  return {
+    question: req.question ?? '(missing question text)',
+    type: req.type ?? 'choice',
+    options: Array.isArray(req.options) ? req.options : [],
+  };
 }
 
 /**
- * Prompt the user for every missing requirement in the plan and fold their
- * answers into agent_instructions as a "User clarifications" block, so the
- * downstream agents run with full context.
+ * Prompt the user for ALL missing requirements in a single batch and fold
+ * their answers into agent_instructions as a "User clarifications" block.
+ * The web prompter renders one combined modal; the CLI prompter loops
+ * internally. Either way, orchestrator calls askBatch exactly once.
+ *
  * Mutates `plan` in place. Returns the list of {question, answer} pairs.
  */
 async function resolveMissingRequirements(plan) {
-  const reqs = Array.isArray(plan.missing_requirements) ? plan.missing_requirements : [];
-  if (reqs.length === 0) return [];
+  const rawReqs = Array.isArray(plan.missing_requirements) ? plan.missing_requirements : [];
+  if (rawReqs.length === 0) return [];
 
-  console.log(`\n[orchestrator] ${reqs.length} clarification${reqs.length === 1 ? '' : 's'} needed before implementation:`);
+  const normalised = rawReqs.map(normaliseRequirement);
 
-  const answers = [];
-  for (const req of reqs) {
-    const pair = await askMissingRequirement(req);
-    answers.push(pair);
-  }
+  console.log(
+    `\n[orchestrator] ${normalised.length} clarification${normalised.length === 1 ? '' : 's'} needed before implementation.`
+  );
+
+  const answers = await askBatch(normalised);
+  const pairs = normalised.map((req, i) => ({
+    question: req.question,
+    answer: (answers?.[i] ?? '').toString().trim() || '(no answer provided)',
+  }));
 
   const block =
     '\n\n--- User clarifications ---\n' +
-    answers.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n');
+    pairs.map(({ question, answer }) => `Q: ${question}\nA: ${answer}`).join('\n\n');
 
   plan.agent_instructions = plan.agent_instructions ?? {};
   for (const name of ['frontend', 'backend', 'qa']) {
@@ -168,8 +186,8 @@ async function resolveMissingRequirements(plan) {
     }
   }
 
-  console.log('\n[orchestrator] Clarifications captured — continuing with updated instructions.');
-  return answers;
+  console.log('[orchestrator] Clarifications captured — continuing with updated instructions.');
+  return pairs;
 }
 
 async function dispatchImplementation(plan) {
@@ -283,13 +301,18 @@ function buildPRTitle(task) {
   return firstLine.length <= 70 ? firstLine : firstLine.slice(0, 67) + '...';
 }
 
-function buildPRBody({ task, writtenPaths, formatted }) {
+function buildPRBody({ task, writtenPaths, formatted, closesIssue }) {
   const fileList = writtenPaths.map((p) => `- \`${p}\``).join('\n') || '_(none)_';
-  return [
+  const lines = [
     '## Summary',
     '',
     task,
     '',
+  ];
+  if (closesIssue != null && closesIssue !== '') {
+    lines.push(`Closes #${closesIssue}`, '');
+  }
+  lines.push(
     '## Files changed',
     '',
     fileList,
@@ -312,125 +335,132 @@ function buildPRBody({ task, writtenPaths, formatted }) {
     '',
     '---',
     '',
-    '_Generated by `ai-orchestrator`._',
-  ].join('\n');
+    '_Generated by `ai-orchestrator`._'
+  );
+  return lines.join('\n');
 }
 
-async function maybeCreatePullRequest({ headBranch, task, writtenPaths, formatted }) {
-  if (headBranch === 'main' || headBranch === 'master') {
-    console.log(`[git] Current branch is '${headBranch}' — skipping PR creation (can't PR to itself).`);
-    return;
-  }
-  if (!git.hasRemote('origin')) {
-    console.log(`[git] No 'origin' remote configured — skipping PR creation.`);
-    return;
-  }
-  if (!git.hasGhCli()) {
-    console.log(
-      `[git] GitHub CLI ('gh') not found — skipping PR creation.\n` +
-      `      Install from https://cli.github.com/ or open a PR manually in the browser.`
-    );
-    return;
-  }
-
-  const answer = await askYesNoOther(`Create a pull request to 'main'?`);
-  if (answer === 'No') {
-    console.log(`[git] PR creation skipped.`);
-    return;
-  }
-  const baseBranch = answer === 'Yes' ? 'main' : answer;
-  if (!baseBranch || baseBranch === headBranch) {
-    console.log(`[git] Base branch '${baseBranch}' is invalid or same as head — skipping.`);
-    return;
-  }
-
-  const title = buildPRTitle(task);
-  const body = buildPRBody({ task, writtenPaths, formatted });
-
-  try {
-    const prUrl = git.createPullRequest({ base: baseBranch, head: headBranch, title, body });
-    console.log(`[git] PR opened: ${prUrl}`);
-  } catch (err) {
-    console.error(`[git] gh pr create failed: ${err.message}`);
-    console.log(
-      `[git] You can retry manually:\n` +
-      `        gh pr create --base ${baseBranch} --head ${headBranch} --title "${title}"`
-    );
-  }
+/**
+ * Produce a branch name safe for `git checkout -b`. Always lowercase,
+ * hyphen-separated, no special characters, capped length.
+ */
+function slugify(s, maxLen = 40) {
+  return String(s ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, maxLen)
+    .replace(/-+$/, '');
 }
 
-async function maybeCommitAndPush(writtenPaths, task, prContext) {
+function generateBranchName({ closesIssue, task }) {
+  const firstLine = String(task).split('\n')[0] || '';
+  const titleSlug = slugify(firstLine);
+  if (closesIssue) {
+    return titleSlug ? `issue-${closesIssue}-${titleSlug}` : `issue-${closesIssue}`;
+  }
+  const ts = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  return titleSlug ? `ai-${titleSlug}-${ts}` : `ai-run-${Date.now()}`;
+}
+
+function uniqueBranchName(base) {
+  if (!git.branchExists(base)) return base;
+  let n = 2;
+  while (git.branchExists(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
+/**
+ * Always creates a fresh branch, commits the agent output there, pushes, and
+ * opens a PR to PR_BASE_BRANCH (default 'main'). No user prompts — this is
+ * intentional so the web UI can run end-to-end without interaction.
+ */
+async function commitAndShareWork(writtenPaths, task, prContext) {
   if (writtenPaths.length === 0) return;
 
-  let branch;
+  let originalBranch;
   try {
-    branch = git.currentBranch();
+    originalBranch = git.currentBranch();
   } catch (err) {
     console.warn(`[git] could not read current branch: ${err.message}`);
     return;
   }
 
-  console.log(`\n[git] Current branch: ${branch}`);
+  // ── Generate a fresh branch off the current HEAD ──
+  const baseName = generateBranchName({ closesIssue: prContext?.closesIssue, task });
+  const newBranch = uniqueBranchName(baseName);
+
+  console.log(`\n[git] Current branch: ${originalBranch}`);
+  console.log(`[git] Creating new branch: ${newBranch}`);
   console.log(`[git] Files to stage: ${writtenPaths.length}`);
-  writtenPaths.forEach(p => console.log(`  - ${p}`));
+  writtenPaths.forEach((p) => console.log(`  - ${p}`));
 
-  // Decide target branch up front so all following prompts can reference it by name
-  const targetBranch = await askText(
-    `\nTarget branch? (Enter to use '${branch}', or type a name to switch/create):`,
-    branch
-  );
-
-  const commit = await askYesNo(
-    `Commit ${writtenPaths.length} file(s) to branch '${targetBranch}'?`
-  );
-  if (!commit) {
-    console.log(`[git] Skipped. Files remain in your working tree on '${branch}' uncommitted.`);
+  try {
+    git.switchOrCreateBranch(newBranch);
+    console.log(`[git] Switched to new branch '${newBranch}'`);
+  } catch (err) {
+    console.error(`[git] Could not create branch '${newBranch}': ${err.message}`);
+    console.error(`[git] Files remain in the working tree on '${originalBranch}' — resolve manually.`);
     return;
   }
 
-  let activeBranch = branch;
-  if (targetBranch !== branch) {
-    try {
-      const { created } = git.switchOrCreateBranch(targetBranch);
-      activeBranch = targetBranch;
-      console.log(`[git] Switched to ${created ? 'new' : 'existing'} branch '${targetBranch}'`);
-    } catch (err) {
-      console.error(`[git] Could not switch to '${targetBranch}': ${err.message}`);
-      console.error(`[git] Commit aborted. Your files are still in the working tree on '${branch}' — resolve manually.`);
-      return;
-    }
-  }
-
+  // ── Commit ──
   const commitMsg = `ai-orchestrator: ${task}`.slice(0, 200);
   try {
     git.addAndCommit(writtenPaths, commitMsg);
-    console.log(`[git] Committed on '${activeBranch}': "${commitMsg}"`);
+    console.log(`[git] Committed on '${newBranch}': "${commitMsg}"`);
   } catch (err) {
     console.error(`[git] commit failed: ${err.message}`);
     return;
   }
 
-  const push = await askYesNo(`Push branch '${activeBranch}' to origin?`);
-  if (!push) {
-    console.log(`[git] Commit is local only. Push manually with: git push -u origin ${activeBranch}`);
+  // ── Push ──
+  if (!git.hasRemote('origin')) {
+    console.log(`[git] No 'origin' remote configured — commit stays local on '${newBranch}'.`);
     return;
   }
-
   try {
     git.pushCurrentBranch();
-    console.log(`[git] Pushed to origin/${activeBranch}.`);
+    console.log(`[git] Pushed to origin/${newBranch}.`);
   } catch (err) {
     console.error(`[git] push failed: ${err.message}`);
+    console.log(`[git] Commit is on local branch '${newBranch}'; PR creation skipped because push failed.`);
     return;
   }
 
-  // Offer to open a PR now that the branch is pushed
-  await maybeCreatePullRequest({
-    headBranch: activeBranch,
+  // ── Open PR ──
+  const baseBranch = process.env.PR_BASE_BRANCH || 'main';
+  if (baseBranch === newBranch) {
+    console.log(`[git] Head branch equals base '${baseBranch}' — skipping PR creation.`);
+    return;
+  }
+  if (!git.hasGhCli()) {
+    console.log(
+      `[git] 'gh' CLI not found — skipping automatic PR creation.\n` +
+      `      Open one manually: gh pr create --base ${baseBranch} --head ${newBranch}\n` +
+      `      Install: https://cli.github.com/`
+    );
+    return;
+  }
+
+  const title = buildPRTitle(task);
+  const body = buildPRBody({
     task,
     writtenPaths,
     formatted: prContext?.formatted ?? '',
+    closesIssue: prContext?.closesIssue,
   });
+
+  try {
+    const prUrl = git.createPullRequest({ base: baseBranch, head: newBranch, title, body });
+    console.log(`[git] PR opened: ${prUrl}`);
+  } catch (err) {
+    console.error(`[git] gh pr create failed: ${err.message}`);
+    console.log(
+      `[git] Retry manually:\n` +
+      `        gh pr create --base ${baseBranch} --head ${newBranch} --title "${title}"`
+    );
+  }
 }
 
 /**
@@ -438,7 +468,8 @@ async function maybeCommitAndPush(writtenPaths, task, prContext) {
  * @param {string} task
  * @returns {Promise<{ plan: object, agentOutputs: object, formatted: string, writeManifest: Array }>}
  */
-export async function orchestrate(rawTask) {
+export async function orchestrate(rawTask, opts = {}) {
+  const { closesIssue } = opts;
   const { task, refinement } = await confirmRefinedTask(rawTask);
 
   console.log('\n[orchestrator] Planning task...');
@@ -523,7 +554,7 @@ export async function orchestrate(rawTask) {
     .filter(f => f.status === 'created' || f.status === 'modified')
     .map(f => f.path);
   if (writtenPaths.length) {
-    await maybeCommitAndPush(writtenPaths, task, { formatted });
+    await commitAndShareWork(writtenPaths, task, { formatted, closesIssue });
   } else if (implAssigned) {
     const emptyAgents = ['frontend', 'backend']
       .filter((name) => {

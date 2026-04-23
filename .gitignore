@@ -66,9 +66,9 @@ desktop.ini
 *~
 
 # ──────────────────────────────────────────────────────────────
-# Claude Code — keep shared settings, ignore personal ones
+# Claude Code — ignore everything (rules, skills, agents, settings)
 # ──────────────────────────────────────────────────────────────
-.claude/settings.local.json
+.claude/
 
 # ──────────────────────────────────────────────────────────────
 # Misc

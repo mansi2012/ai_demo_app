@@ -70,6 +70,29 @@ export function askChoice(question, options = []) {
 }
 
 /**
+ * Ask a batch of clarification questions. CLI implementation falls back to
+ * asking them one at a time — it's a safe default when no richer UI exists.
+ * Web prompters override this to render a single combined form.
+ *
+ * @param {Array<{ question: string, type?: 'choice'|'yesno'|'text', options?: string[] }>} requirements
+ * @returns {Promise<string[]>} answer strings, one per requirement (same order)
+ */
+export async function askBatch(requirements) {
+  const answers = [];
+  for (const req of requirements) {
+    const type = req.type ?? 'choice';
+    if (type === 'yesno') {
+      answers.push(await askYesNoOther(req.question));
+    } else if (type === 'text') {
+      answers.push(await askText(req.question + ' '));
+    } else {
+      answers.push(await askChoice(req.question, req.options ?? []));
+    }
+  }
+  return answers;
+}
+
+/**
  * Ask a yes/no question with an (o) Other escape hatch. Returns "Yes", "No",
  * or the user's typed response.
  */
