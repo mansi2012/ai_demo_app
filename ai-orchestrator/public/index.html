@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Orchestrator</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --bg-2: #0f172a;
+      --panel: #111827;
+      --panel-2: #1e293b;
+      --panel-3: #273549;
+      --text: #e5e7eb;
+      --text-dim: #cbd5e1;
+      --muted: #94a3b8;
+      --muted-2: #64748b;
+      --accent: #6366f1;
+      --accent-2: #4f46e5;
+      --accent-3: #818cf8;
+      --ok: #34d399;
+      --ok-bg: rgba(52, 211, 153, 0.12);
+      --warn: #fbbf24;
+      --warn-bg: rgba(251, 191, 36, 0.12);
+      --err: #f87171;
+      --err-bg: rgba(248, 113, 113, 0.12);
+      --border: #1f2a3b;
+      --border-2: #334155;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+      --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.5);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(99, 102, 241, 0.12), transparent 60%),
+        radial-gradient(900px 500px at 110% 10%, rgba(52, 211, 153, 0.08), transparent 60%),
+        var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ───── Header ───── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(11, 17, 32, 0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .logo {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent), var(--accent-3));
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      color: white;
+      box-shadow: var(--shadow-sm);
+    }
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+      flex: 1;
+    }
+    header h1 .subtitle {
+      font-weight: 400;
+      color: var(--muted);
+      margin-left: 8px;
+      font-size: 13px;
+    }
+    .repo-input {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .repo-input label {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .repo-input input {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      padding: 7px 12px;
+      font: inherit;
+      min-width: 260px;
+      outline: none;
+      transition: border-color 120ms, box-shadow 120ms;
+    }
+    .repo-input input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+    }
+
+    /* ───── Buttons ───── */
+    button {
+      background: var(--accent);
+      color: white;
+      border: 0;
+      border-radius: var(--radius-sm);
+      padding: 7px 14px;
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 120ms, transform 60ms, box-shadow 120ms;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover:not(:disabled) { background: var(--accent-2); }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    button.ghost {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border-2);
+    }
+    button.ghost:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+
+    /* ───── Badges ───── */
+    .badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      text-transform: capitalize;
+      border: 1px solid var(--border-2);
+      background: var(--panel-2);
+      color: var(--muted);
+    }
+    .badge-dot::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      margin-right: 6px;
+      vertical-align: 1px;
+    }
+    .status-idle { color: var(--muted); }
+    .status-running { color: var(--warn); background: var(--warn-bg); border-color: rgba(251, 191, 36, 0.3); }
+    .status-done { color: var(--ok); background: var(--ok-bg); border-color: rgba(52, 211, 153, 0.3); }
+    .status-error { color: var(--err); background: var(--err-bg); border-color: rgba(248, 113, 113, 0.3); }
+    .status-starting { color: var(--accent-3); background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.3); }
+
+    /* ───── Layout ───── */
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      padding: 20px 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    @media (max-width: 1050px) { main { grid-template-columns: 1fr; } }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 120px);
+      overflow: hidden;
+    }
+    .section-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: space-between;
+    }
+    .section-head h2 {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin: 0;
+    }
+    .section-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 18px;
+    }
+
+    /* ───── Issue card ───── */
+    .issue-count {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .issue-source {
+      font-size: 11px;
+      color: var(--muted-2);
+      padding: 4px 0 12px;
+      border-bottom: 1px dashed var(--border);
+      margin-bottom: 14px;
+    }
+    .issue {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      background: var(--panel-2);
+      transition: border-color 120ms, transform 80ms, box-shadow 160ms;
+      text-align: left;
+    }
+    .issue:hover {
+      border-color: var(--border-2);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+    .issue-head {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .issue-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+      min-width: 0;
+    }
+    .issue-num {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--accent-3);
+      background: rgba(129, 140, 248, 0.1);
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(129, 140, 248, 0.25);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .issue-title {
+      font-weight: 600;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.4;
+      text-align: left;
+      word-break: break-word;
+    }
+    .issue-body {
+      color: var(--text-dim);
+      font-size: 13px;
+      line-height: 1.55;
+      margin: 8px 0;
+      text-align: left;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      white-space: pre-wrap;
+    }
+    .issue.expanded .issue-body {
+      -webkit-line-clamp: unset;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .issue-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .issue-labels {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .issue-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .label {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(99, 102, 241, 0.12);
+      color: var(--accent-3);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .label.label-bug { background: var(--err-bg); color: var(--err); border-color: rgba(248, 113, 113, 0.3); }
+    .label.label-enhancement { background: rgba(129, 140, 248, 0.12); color: var(--accent-3); border-color: rgba(129, 140, 248, 0.3); }
+    .label.label-documentation { background: var(--ok-bg); color: var(--ok); border-color: rgba(52, 211, 153, 0.3); }
+    .label.label-question { background: var(--warn-bg); color: var(--warn); border-color: rgba(251, 191, 36, 0.3); }
+    .run-btn {
+      padding: 6px 14px;
+      font-size: 13px;
+    }
+    .expand-toggle {
+      background: transparent;
+      color: var(--muted);
+      border: 0;
+      padding: 0;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .expand-toggle:hover { color: var(--text-dim); }
+
+    /* ───── Empty / error states ───── */
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 40px 20px;
+      font-size: 13px;
+    }
+    .empty svg { display: block; margin: 0 auto 12px; opacity: 0.5; }
+    .empty strong { color: var(--text-dim); font-weight: 600; display: block; margin-bottom: 4px; }
+
+    /* ───── Log ───── */
+    .log {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      padding: 16px 18px;
+      color: var(--text-dim);
+    }
+    .log .line { padding: 1px 0; }
+    .log .line-log { color: var(--text-dim); }
+    .log .line-warn { color: var(--warn); }
+    .log .line-error { color: var(--err); }
+    .log .line-system { color: var(--accent-3); font-style: italic; }
+
+    /* ───── Context block (refinement preview etc.) ───── */
+    .context-block {
+      background: var(--panel-2);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      padding: 0;
+      margin: 0 0 16px;
+      overflow: hidden;
+    }
+    .context-section {
+      padding: 12px 14px;
+    }
+    .context-section + .context-section {
+      border-top: 1px solid var(--border);
+    }
+    .context-section.refined {
+      background: rgba(99, 102, 241, 0.06);
+    }
+    .context-label {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      font-weight: 700;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .context-section.refined .context-label { color: var(--accent-3); }
+    .context-text {
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      font-size: 13.5px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+    .context-section.refined .context-text { color: var(--text); }
+    .context-note {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--warn-bg);
+      color: var(--warn);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    /* ───── Modal ───── */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 9, 20, 0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 20px;
+    }
+    .overlay.open { display: flex; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      min-width: 460px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: var(--shadow-lg);
+      animation: modal-in 160ms ease-out;
+    }
+    @keyframes modal-in {
+      from { opacity: 0; transform: translateY(8px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .modal h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .modal p.question {
+      margin: 0 0 18px;
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .modal .options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .modal .options label {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 14px;
+      background: var(--panel-2);
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 120ms, border-color 120ms;
+      line-height: 1.4;
+    }
+    .modal .options label:hover { background: var(--panel-3); border-color: var(--accent); }
+    .modal .options label input[type="radio"] {
+      accent-color: var(--accent);
+      margin-top: 3px;
+    }
+    .modal .options label:has(input:checked) {
+      border-color: var(--accent);
+      background: rgba(99, 102, 241, 0.08);
+    }
+    .modal textarea, .modal input[type="text"] {
+      width: 100%;
+      background: var(--panel-2);
+      border: 1px solid var(--border-2);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font: inherit;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 120ms, box-shadow 120ms;
+    }
+    .modal textarea { min-height: 90px; resize: vertical; }
+    .modal textarea:focus, .modal input[type="text"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    /* ───── Batch modal ───── */
+    .modal.wide { max-width: 720px; }
+    .batch-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-height: 55vh;
+      overflow-y: auto;
+      padding-right: 6px;
+      margin-bottom: 4px;
+    }
+    .batch-item {
+      border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm);
+      background: var(--panel-2);
+      padding: 14px 16px;
+    }
+    .batch-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .batch-item-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent-3);
+      background: rgba(129, 140, 248, 0.12);
+      border: 1px solid rgba(129, 140, 248, 0.3);
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+    .batch-item-type {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+    }
+    .batch-item-question {
+      font-size: 13.5px;
+      line-height: 1.5;
+      color: var(--text);
+      font-weight: 500;
+      margin-bottom: 10px;
+    }
+    .batch-item .options label {
+      padding: 8px 12px;
+      font-size: 13px;
+    }
+    .batch-item .options label + label { margin-top: 4px; }
+    .batch-item input[type="text"] {
+      margin-top: 6px;
+      font-size: 13px;
+    }
+    .batch-submit-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 12px;
+      margin-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .batch-progress {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .batch-progress strong { color: var(--accent-3); }
+
+    /* ───── Skeleton loader ───── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--panel-2) 0%, var(--panel-3) 50%, var(--panel-2) 100%);
+      background-size: 200% 100%;
+      animation: skeleton 1.2s linear infinite;
+      border-radius: var(--radius-sm);
+    }
+    @keyframes skeleton {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .skeleton-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      background: var(--panel-2);
+    }
+    .skeleton-line { height: 12px; margin-bottom: 8px; }
+    .skeleton-line.w-half { width: 50%; }
+    .skeleton-line.w-full { width: 100%; }
+    .skeleton-line.w-75 { width: 75%; }
+
+    /* ───── Scrollbar polish ───── */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 10px; border: 2px solid var(--panel); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted-2); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">AI</div>
+    <h1>AI Orchestrator<span class="subtitle">Pick an issue, run the agents, open a PR</span></h1>
+    <div class="repo-input">
+      <input id="repo" type="text" placeholder="owner/name" aria-label="GitHub repository" />
+      <button id="load">Load issues</button>
+    </div>
+    <span id="status" class="badge badge-dot status-idle">idle</span>
+  </header>
+
+  <main>
+    <section>
+      <div class="section-head">
+        <h2>Open issues</h2>
+        <span id="issue-count" class="issue-count"></span>
+      </div>
+      <div class="section-body">
+        <div id="issues">
+          <div class="empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <strong>No issues loaded yet</strong>
+            Enter a repo above and click "Load issues" to get started.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>Run log</h2>
+        <span id="run-meta" class="issue-count"></span>
+      </div>
+      <div class="section-body" style="padding: 0;">
+        <div id="log" class="log">
+          <div class="empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            <strong>Nothing running</strong>
+            Click "Run" on an issue to start the orchestrator.
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="overlay" class="overlay" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h3>Orchestrator needs input</h3>
+      <p class="question" id="modal-question"></p>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button id="modal-submit">Submit answer</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const issuesEl = $('issues');
+    const logEl = $('log');
+    const statusEl = $('status');
+    const repoEl = $('repo');
+    const overlay = $('overlay');
+    const modalQ = $('modal-question');
+    const modalBody = $('modal-body');
+    const modalSubmit = $('modal-submit');
+    const issueCountEl = $('issue-count');
+    const runMetaEl = $('run-meta');
+
+    repoEl.value = new URLSearchParams(location.search).get('repo') || '';
+
+    let currentRunId = null;
+    let currentPrompt = null;
+    let eventSource = null;
+
+    $('load').addEventListener('click', loadIssues);
+    repoEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadIssues(); });
+
+    async function loadIssues() {
+      const repo = repoEl.value.trim();
+      if (!repo) { alert('Enter owner/name'); return; }
+
+      // Skeleton
+      issuesEl.innerHTML = '';
+      for (let i = 0; i < 3; i++) {
+        const sk = document.createElement('div');
+        sk.className = 'skeleton-card';
+        sk.innerHTML = `
+          <div class="skeleton skeleton-line w-half"></div>
+          <div class="skeleton skeleton-line w-full"></div>
+          <div class="skeleton skeleton-line w-75"></div>
+        `;
+        issuesEl.appendChild(sk);
+      }
+      issueCountEl.textContent = 'loading…';
+
+      try {
+        const r = await fetch('/api/issues?repo=' + encodeURIComponent(repo));
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        renderIssues(data.issues, data.source);
+      } catch (err) {
+        issueCountEl.textContent = '';
+        issuesEl.innerHTML = `
+          <div class="empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            <strong>Failed to load issues</strong>
+            ${escape(err.message)}
+          </div>`;
+      }
+    }
+
+    function renderIssues(issues, source) {
+      issueCountEl.textContent = `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`;
+      if (!issues.length) {
+        issuesEl.innerHTML = `
+          <div class="empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+            <strong>No open issues</strong>
+            This repo has no open issues to run.
+          </div>`;
+        return;
+      }
+      issuesEl.innerHTML = '';
+      const srcNote = document.createElement('div');
+      srcNote.className = 'issue-source';
+      srcNote.textContent = 'Source: ' + (source === 'gh'
+        ? 'gh CLI (authenticated, private + public)'
+        : 'public REST API (no auth — public repos only)');
+      issuesEl.appendChild(srcNote);
+
+      issues.forEach((i) => {
+        const card = document.createElement('div');
+        card.className = 'issue';
+        const labelsHTML = (i.labels || []).map((l) => {
+          const slug = String(l).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+          return `<span class="label label-${escape(slug)}">${escape(l)}</span>`;
+        }).join('');
+        card.innerHTML = `
+          <div class="issue-head">
+            <div class="issue-meta">
+              <span class="issue-num">#${i.number}</span>
+              <div class="issue-title">${escape(i.title)}</div>
+            </div>
+            <button class="run-btn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Run
+            </button>
+          </div>
+          ${i.body ? `<div class="issue-body">${escape(i.body)}</div>` : ''}
+          <div class="issue-footer">
+            <div class="issue-labels">${labelsHTML}</div>
+            <div class="issue-actions">
+              ${i.body && i.body.length > 160 ? '<button class="expand-toggle">Show more</button>' : ''}
+            </div>
+          </div>
+        `;
+        card.querySelector('.run-btn').addEventListener('click', () => runIssue(i));
+        const toggle = card.querySelector('.expand-toggle');
+        if (toggle) {
+          toggle.addEventListener('click', () => {
+            card.classList.toggle('expanded');
+            toggle.textContent = card.classList.contains('expanded') ? 'Show less' : 'Show more';
+          });
+        }
+        issuesEl.appendChild(card);
+      });
+    }
+
+    async function runIssue(issue) {
+      if (currentRunId) {
+        alert('A run is already in progress. Wait for it to finish.');
+        return;
+      }
+      const task = `${issue.title}\n\n${issue.body || '(no description)'}`.trim();
+      setStatus('starting', 'starting');
+      runMetaEl.textContent = `Issue #${issue.number}`;
+      logEl.innerHTML = '';
+      appendLog('system', `[ui] starting run for #${issue.number} — "${issue.title}"`);
+
+      try {
+        const r = await fetch('/api/runs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task, closesIssue: issue.number }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        currentRunId = data.runId;
+        setStatus('running', 'running');
+        subscribe(currentRunId);
+      } catch (err) {
+        appendLog('error', '[ui] failed to start run: ' + err.message);
+        setStatus('error', 'error');
+      }
+    }
+
+    function subscribe(runId) {
+      eventSource?.close();
+      eventSource = new EventSource(`/api/runs/${runId}/events`);
+      eventSource.addEventListener('log', (e) => {
+        const entry = JSON.parse(e.data);
+        appendLog(entry.level, entry.msg);
+      });
+      eventSource.addEventListener('prompt', (e) => {
+        currentPrompt = JSON.parse(e.data);
+        openModal(currentPrompt);
+      });
+      eventSource.addEventListener('prompt_closed', () => {
+        closeModal();
+        currentPrompt = null;
+      });
+      eventSource.addEventListener('done', (e) => {
+        const data = JSON.parse(e.data);
+        appendLog('system', '\n═══ orchestrator done ═══');
+        if (data.formatted) appendLog('log', data.formatted);
+        setStatus('done', 'done');
+        eventSource.close();
+        currentRunId = null;
+      });
+      eventSource.addEventListener('error', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          appendLog('error', '[error] ' + data.message);
+          setStatus('error', 'error');
+        } catch { /* network error, ignore */ }
+      });
+    }
+
+    function appendLog(level, msg) {
+      // First real log line clears the empty-state
+      if (logEl.querySelector('.empty')) logEl.innerHTML = '';
+      const line = document.createElement('div');
+      line.className = 'line line-' + (level || 'log');
+      line.textContent = msg;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = 'badge badge-dot status-' + cls;
+    }
+
+    // ──────── Prompt modal ────────
+    const modalEl = document.querySelector('.modal');
+    function openModal(prompt) {
+      modalQ.textContent = prompt.question;
+      modalBody.innerHTML = '';
+      modalSubmit.textContent = 'Submit answer';  // reset; renderBatch overrides below
+      modalEl.classList.toggle('wide', prompt.kind === 'batch');
+      if (prompt.context) renderContext(prompt.context);
+      if (prompt.kind === 'batch') renderBatch(prompt);
+      else if (prompt.kind === 'yesno') renderYesNo(prompt);
+      else if (prompt.kind === 'yesno_other') renderYesNoOther(prompt);
+      else if (prompt.kind === 'choice') renderChoice(prompt);
+      else renderText(prompt);
+      overlay.classList.add('open');
+    }
+
+    function renderContext(ctx) {
+      if (!ctx || !ctx.kind) return;
+      const block = document.createElement('div');
+      block.className = 'context-block';
+      if (ctx.kind === 'refinement') {
+        block.innerHTML = `
+          <div class="context-section">
+            <div class="context-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+              Your original task
+            </div>
+            <div class="context-text">${escape(ctx.original)}</div>
+          </div>
+          <div class="context-section refined">
+            <div class="context-label">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+              Refined by the orchestrator
+            </div>
+            <div class="context-text">${escape(ctx.refined)}</div>
+            ${ctx.notes ? `<div class="context-note"><strong>Note:</strong> ${escape(ctx.notes)}</div>` : ''}
+          </div>
+        `;
+      }
+      modalBody.appendChild(block);
+    }
+    function closeModal() { overlay.classList.remove('open'); }
+
+    function renderBatch(p) {
+      const reqs = Array.isArray(p.requirements) ? p.requirements : [];
+      const list = document.createElement('div');
+      list.className = 'batch-list';
+
+      reqs.forEach((req, idx) => {
+        const item = document.createElement('div');
+        item.className = 'batch-item';
+        const groupName = 'batch-' + idx;
+        const type = req.type ?? 'choice';
+        const typeLabel = type === 'yesno' ? 'Yes / No' : type === 'text' ? 'Free text' : 'Choice';
+
+        const baseOptions = type === 'yesno' ? ['Yes', 'No'] : (req.options || []);
+
+        let optionsHTML = '';
+        if (type !== 'text') {
+          optionsHTML = `<div class="options">
+            ${baseOptions.map((opt, i) => `
+              <label>
+                <input type="radio" name="${groupName}" value="${escape(opt)}" ${i === 0 ? 'checked' : ''}/>
+                <span>${escape(opt)}</span>
+              </label>
+            `).join('')}
+            <label>
+              <input type="radio" name="${groupName}" value="__other__"/>
+              <span>Other (custom text below)</span>
+            </label>
+          </div>`;
+        }
+
+        item.innerHTML = `
+          <div class="batch-item-header">
+            <span class="batch-item-num">${idx + 1} of ${reqs.length}</span>
+            <span class="batch-item-type">${typeLabel}</span>
+          </div>
+          <div class="batch-item-question">${escape(req.question)}</div>
+          ${optionsHTML}
+          <input type="text" class="batch-other-input" data-idx="${idx}"
+                 autocomplete="off" name="batch-other-${idx}-${Math.random().toString(36).slice(2, 6)}"
+                 placeholder="${type === 'text' ? 'Your answer' : 'Your custom answer (used if Other is selected)'}" />
+        `;
+        list.appendChild(item);
+      });
+
+      const progress = document.createElement('div');
+      progress.className = 'batch-submit-row';
+      progress.innerHTML = `<div class="batch-progress"><strong>${reqs.length}</strong> clarification${reqs.length === 1 ? '' : 's'} to answer</div>`;
+
+      modalBody.appendChild(list);
+      modalBody.appendChild(progress);
+
+      modalSubmit.textContent = 'Submit all answers';
+      modalSubmit.onclick = () => {
+        const answers = reqs.map((req, idx) => {
+          const type = req.type ?? 'choice';
+          const txt = modalBody.querySelector(`input.batch-other-input[data-idx="${idx}"]`);
+          const txtVal = (txt?.value || '').trim();
+          if (type === 'text') return txtVal || '(no answer provided)';
+          const sel = modalBody.querySelector(`input[name="batch-${idx}"]:checked`)?.value;
+          if (sel === '__other__') return txtVal || '(no answer provided)';
+          return sel || '(no answer provided)';
+        });
+        submit(answers);
+      };
+    }
+
+    function renderYesNo(p) {
+      const wrap = document.createElement('div');
+      wrap.className = 'options';
+      ['Yes', 'No'].forEach((val) => {
+        const label = document.createElement('label');
+        const checked = val === (p.default ? 'Yes' : 'No') ? 'checked' : '';
+        label.innerHTML = `<input type="radio" name="ans" value="${val}" ${checked}/> <span>${val}</span>`;
+        wrap.appendChild(label);
+      });
+      modalBody.appendChild(wrap);
+      modalSubmit.onclick = () => {
+        const sel = modalBody.querySelector('input[name=ans]:checked');
+        submit(sel ? sel.value === 'Yes' : !!p.default);
+      };
+    }
+
+    function renderYesNoOther(p) {
+      const wrap = document.createElement('div');
+      wrap.className = 'options';
+      ['Yes', 'No', 'Other (custom text below)'].forEach((val, i) => {
+        const label = document.createElement('label');
+        const key = i === 0 ? 'Yes' : i === 1 ? 'No' : 'Other';
+        const checked = i === 0 ? 'checked' : '';
+        label.innerHTML = `<input type="radio" name="ans" value="${key}" ${checked}/> <span>${val}</span>`;
+        wrap.appendChild(label);
+      });
+      const txt = document.createElement('input');
+      txt.type = 'text';
+      txt.autocomplete = 'off';
+      txt.name = 'ans-other-' + Math.random().toString(36).slice(2, 8);
+      txt.placeholder = 'Your custom answer';
+      modalBody.appendChild(wrap);
+      modalBody.appendChild(txt);
+      modalSubmit.onclick = () => {
+        const sel = modalBody.querySelector('input[name=ans]:checked')?.value;
+        if (sel === 'Other') submit(txt.value.trim() || '(no answer provided)');
+        else submit(sel || 'No');
+      };
+    }
+
+    function renderChoice(p) {
+      const wrap = document.createElement('div');
+      wrap.className = 'options';
+      (p.options || []).forEach((opt, i) => {
+        const label = document.createElement('label');
+        const checked = i === 0 ? 'checked' : '';
+        label.innerHTML = `<input type="radio" name="ans" value="${escape(opt)}" ${checked}/> <span>${escape(opt)}</span>`;
+        wrap.appendChild(label);
+      });
+      const otherLabel = document.createElement('label');
+      otherLabel.innerHTML = `<input type="radio" name="ans" value="__other__"/> <span>Other (custom text below)</span>`;
+      wrap.appendChild(otherLabel);
+      const txt = document.createElement('input');
+      txt.type = 'text';
+      txt.autocomplete = 'off';
+      txt.name = 'ans-other-' + Math.random().toString(36).slice(2, 8);
+      txt.placeholder = 'Your custom answer';
+      modalBody.appendChild(wrap);
+      modalBody.appendChild(txt);
+      modalSubmit.onclick = () => {
+        const sel = modalBody.querySelector('input[name=ans]:checked')?.value;
+        if (sel === '__other__') submit(txt.value.trim() || '(no answer provided)');
+        else submit(sel ?? '');
+      };
+    }
+
+    function renderText(p) {
+      const ta = document.createElement('textarea');
+      ta.rows = 4;
+      ta.value = p.default ?? '';
+      modalBody.appendChild(ta);
+      modalSubmit.onclick = () => submit(ta.value);
+      setTimeout(() => ta.focus(), 0);
+    }
+
+    async function submit(answer) {
+      if (!currentPrompt || !currentRunId) return;
+      const promptId = currentPrompt.id;
+      // Prevent double-submit while the request is in flight
+      modalSubmit.disabled = true;
+      closeModal();
+      try {
+        const r = await fetch(`/api/runs/${currentRunId}/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ promptId, answer }),
+        });
+        if (!r.ok) {
+          const data = await r.json().catch(() => ({}));
+          appendLog('error', '[ui] failed to submit answer: ' + (data.error || ('HTTP ' + r.status)));
+        }
+      } catch (err) {
+        appendLog('error', '[ui] submit error: ' + err.message);
+      } finally {
+        modalSubmit.disabled = false;
+      }
+      // NB: do NOT clear currentPrompt here — SSE 'prompt_closed' / 'prompt'
+      // events are the source of truth. Clobbering here would break the next
+      // prompt when Q2 arrives before this fetch resolves.
+    }
+
+    function escape(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

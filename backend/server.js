@@ -13,11 +13,13 @@ const start = async () => {
     process.exit(1);
   }
 
+  console.log(
+    `[db] Connecting to ${config.db.dialect}://${config.db.username}@${config.db.host}:${config.db.port}/${config.db.database}`
+  );
+
   try {
     await sequelize.authenticate();
-    console.log(
-      `[db] Connected (${config.db.dialect}) to ${config.db.host}:${config.db.port}/${config.db.database}`
-    );
+    console.log('[db] Connected');
 
     await sequelize.sync();
     console.log('[db] Models synced');

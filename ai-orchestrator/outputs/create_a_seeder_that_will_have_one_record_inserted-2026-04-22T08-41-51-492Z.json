@@ -1,0 +1,20 @@
+{
+  "task_understanding": "The task requires creating a database seeder to insert a single admin/user record (name: 'Mansi Mistry', username: 'mansi_mistry', email: 'mansimistry.di@gmail.com', password: 'mansi123##') only if it does not already exist. This is a backend-only operation with no UI or frontend components involved.",
+  "breakdown": {
+    "frontend": null,
+    "backend": "Create a MySQL seeder script that checks for existence of the user with email 'mansimistry.di@gmail.com' before inserting a new record into the 'users' table. The seeder must hash the password (using the app's existing bcrypt logic), set createdAt/updatedAt timestamps, and preserve multi-tenancy by assigning a default businessId (or clarify requirement — businessId may be required but ambiguous here).",
+    "qa": "QA must verify the seeder: (1) does not insert duplicate record on re-run (idempotency), (2) successfully inserts record on first run, (3) validates password hash matches bcrypt, (4) ensures required fields (email, name, etc.) are non-null and conform to DB constraints, (5) logs no errors on missing optional fields (e.g. phone, role)."
+  },
+  "assigned_agents": [
+    "backend",
+    "qa"
+  ],
+  "missing_requirements": [
+    "Clarify whether a default businessId should be assigned — e.g., fallback to a system tenant or require manual input. Also clarify if this user is a system admin (global access) or tied to a specific business (e.g., businessId = 1)"
+  ],
+  "agent_instructions": {
+    "frontend": null,
+    "backend": "1. Locate or create a seeder file (e.g., /db/seeds/AdminUserSeeder.ts) in the backend project. 2. Use a DB transaction. 3. Query users WHERE email = 'mansimistry.di@gmail.com' to check existence. 4. If not found, hash 'mansi123##' using the app's existing bcrypt.compare/salt (e.g., bcrypt.hashSync(password, 10)). 5. Insert record into 'users' table with: name = 'Mansi Mistry', username = 'mansi_mistry', email = 'mansimistry.di@gmail.com', password_hash = <hashed_value>, createdAt = now(), updatedAt = now(), [and clarify businessId — if required, default to 1 or prompt error]. 6. Ensure BigInt fields serialize as strings in JSON (but not needed for seeder DB insert). 7. Add logging for success/failure. 8. Document how to run the seeder (e.g., npm run seed:admin).",
+    "qa": "1. Run the seeder twice in succession and confirm only one record exists (no duplicates). 2. Manually verify the inserted record in MySQL: email = 'mansimistry.di@gmail.com', password_hash starts with $2b$, and all required columns are non-null. 3. Attempt to log in as this user via /api/auth/login using API calls (axios) — use username/password credentials — to validate correctness of password hash. 4. Test negative case: re-run seeder after user exists and confirm no DB errors or duplicate insertion. 5. Check no console errors or unhandled rejections during execution."
+  }
+}

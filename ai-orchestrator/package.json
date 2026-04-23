@@ -1,0 +1,20 @@
+{
+  "name": "ai-orchestrator",
+  "version": "1.0.0",
+  "description": "Claude-powered orchestrator that decomposes tasks across Frontend, Backend, and QA agents",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "task": "node index.js",
+    "ui": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.15.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}
