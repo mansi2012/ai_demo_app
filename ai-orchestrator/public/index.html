@@ -102,14 +102,33 @@
       border-radius: var(--radius-sm);
       padding: 7px 12px;
       font: inherit;
-      min-width: 260px;
+      min-width: 220px;
       outline: none;
       transition: border-color 120ms, box-shadow 120ms;
+    }
+    .repo-input input.token-input {
+      min-width: 180px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+    }
+    .repo-input input.has-token {
+      border-color: var(--ok);
+      box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.3);
     }
     .repo-input input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
     }
+    .token-hint {
+      font-size: 11px;
+      color: var(--muted-2);
+      margin-top: 4px;
+    }
+    .token-hint a {
+      color: var(--accent-3);
+      text-decoration: none;
+    }
+    .token-hint a:hover { text-decoration: underline; }
 
     /* ───── Buttons ───── */
     button {
@@ -602,6 +621,7 @@
     <h1>AI Orchestrator<span class="subtitle">Pick an issue, run the agents, open a PR</span></h1>
     <div class="repo-input">
       <input id="repo" type="text" placeholder="owner/name" aria-label="GitHub repository" />
+      <input id="token" class="token-input" type="password" placeholder="ghp_… (private repos)" aria-label="GitHub token" autocomplete="off" />
       <button id="load">Load issues</button>
     </div>
     <span id="status" class="badge badge-dot status-idle">idle</span>
@@ -665,7 +685,11 @@
     const issueCountEl = $('issue-count');
     const runMetaEl = $('run-meta');
 
-    repoEl.value = new URLSearchParams(location.search).get('repo') || '';
+    const tokenEl = $('token');
+
+    repoEl.value = new URLSearchParams(location.search).get('repo') || localStorage.getItem('ai-orch.repo') || '';
+    tokenEl.value = localStorage.getItem('ai-orch.token') || '';
+    reflectTokenState();
 
     let currentRunId = null;
     let currentPrompt = null;
@@ -673,10 +697,22 @@
 
     $('load').addEventListener('click', loadIssues);
     repoEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadIssues(); });
+    tokenEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') loadIssues(); });
+    tokenEl.addEventListener('input', reflectTokenState);
+
+    function reflectTokenState() {
+      tokenEl.classList.toggle('has-token', !!tokenEl.value.trim());
+    }
 
     async function loadIssues() {
       const repo = repoEl.value.trim();
+      const token = tokenEl.value.trim();
       if (!repo) { alert('Enter owner/name'); return; }
+
+      // Persist for next time
+      localStorage.setItem('ai-orch.repo', repo);
+      if (token) localStorage.setItem('ai-orch.token', token);
+      else localStorage.removeItem('ai-orch.token');
 
       // Skeleton
       issuesEl.innerHTML = '';
@@ -693,10 +729,30 @@
       issueCountEl.textContent = 'loading…';
 
       try {
-        const r = await fetch('/api/issues?repo=' + encodeURIComponent(repo));
+        const headers = {};
+        if (token) headers.Authorization = 'Bearer ' + token;
+        const r = await fetch('/api/issues?repo=' + encodeURIComponent(repo), { headers });
         const data = await r.json();
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-        renderIssues(data.issues, data.source);
+        if (!r.ok) {
+          if (data.authRequired) {
+            issueCountEl.textContent = '';
+            issuesEl.innerHTML = `
+              <div class="empty">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <strong>Authentication required</strong>
+                ${escape(data.error || 'This repo is private or not accessible.')}
+                <div class="token-hint" style="margin-top:12px;">
+                  Create a Personal Access Token with <code>repo</code> scope at
+                  <a href="https://github.com/settings/tokens/new?scopes=repo&description=ai-orchestrator" target="_blank" rel="noopener">github.com/settings/tokens/new</a>,
+                  paste it into the token field above, and click Load issues again.
+                </div>
+              </div>`;
+            tokenEl.focus();
+            return;
+          }
+          throw new Error(data.error || ('HTTP ' + r.status));
+        }
+        renderIssues(data.issues, data.source, data.authenticated);
       } catch (err) {
         issueCountEl.textContent = '';
         issuesEl.innerHTML = `
@@ -708,7 +764,7 @@
       }
     }
 
-    function renderIssues(issues, source) {
+    function renderIssues(issues, source, authenticated) {
       issueCountEl.textContent = `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`;
       if (!issues.length) {
         issuesEl.innerHTML = `
@@ -722,9 +778,15 @@
       issuesEl.innerHTML = '';
       const srcNote = document.createElement('div');
       srcNote.className = 'issue-source';
-      srcNote.textContent = 'Source: ' + (source === 'gh'
-        ? 'gh CLI (authenticated, private + public)'
-        : 'public REST API (no auth — public repos only)');
+      const sources = {
+        'gh': 'gh CLI (authenticated via OS keychain)',
+        'rest-auth': 'REST API + your token (authenticated)',
+        'rest-public': 'public REST API (no auth — public repos only)',
+      };
+      srcNote.textContent = 'Source: ' + (sources[source] || source);
+      if (authenticated === false) {
+        srcNote.textContent += ' — add a token to access private repos';
+      }
       issuesEl.appendChild(srcNote);
 
       issues.forEach((i) => {
