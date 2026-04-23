@@ -1,57 +1,71 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import {
+  Component,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  ChangeDetectionStrategy
+} from '@angular/core';
+import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { HttpErrorResponse } from '@angular/common/http';
-import { Router, RouterLink } from '@angular/router';
-
 import { AuthService } from '../../core/services/auth.service';
-import { AuthShellComponent } from '../../shared/auth-shell.component';
-import { ApiErrorBody } from '../../core/models/user.model';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink, AuthShellComponent],
+  imports: [ReactiveFormsModule, RouterLink, CommonModule],
   templateUrl: './login.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class LoginComponent {
-  private readonly fb = inject(FormBuilder);
-  private readonly auth = inject(AuthService);
-  private readonly router = inject(Router);
+export class LoginComponent implements OnInit {
+  private fb = inject(FormBuilder);
+  private auth = inject(AuthService);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
-  readonly submitting = signal(false);
-  readonly serverError = signal<string | null>(null);
+  serverError = signal('');
+  loading = signal(false);
+  resetSuccess = signal(false);
 
-  readonly form = this.fb.nonNullable.group({
-    identifier: ['', [Validators.required]],
-    password: ['', [Validators.required]],
+  form = this.fb.nonNullable.group({
+    email: ['', [Validators.required, Validators.email]],
+    password: ['', [Validators.required]]
   });
 
-  onSubmit(): void {
-    if (this.form.invalid || this.submitting()) {
+  ngOnInit(): void {
+    const reset = this.route.snapshot.queryParamMap.get('reset');
+    if (reset === 'success') {
+      this.resetSuccess.set(true);
+    }
+  }
+
+  submit(): void {
+    if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
-    this.submitting.set(true);
-    this.serverError.set(null);
-
-    this.auth.login(this.form.getRawValue()).subscribe({
-      next: () => this.router.navigate(['/home']),
-      error: (err: HttpErrorResponse) => {
-        const body = err.error as ApiErrorBody | null;
-        this.serverError.set(body?.message ?? 'Login failed. Please try again.');
-        this.submitting.set(false);
+    this.loading.set(true);
+    this.serverError.set('');
+    const { email, password } = this.form.getRawValue();
+    this.auth.login(email, password).subscribe({
+      next: () => {
+        this.loading.set(false);
+        this.router.navigate(['/dashboard']);
       },
+      error: (err: { error: { message?: string; details?: { field: string; message: string }[] } }) => {
+        this.loading.set(false);
+        const details = err.error?.details ?? [];
+        details.forEach((d) => {
+          const ctrl = this.form.get(d.field);
+          if (ctrl) {
+            ctrl.setErrors({ serverError: d.message });
+          }
+        });
+        if (!details.length) {
+          this.serverError.set(err.error?.message ?? 'Login failed. Please try again.');
+        }
+      }
     });
-  }
-
-  controlInvalid(name: 'identifier' | 'password'): boolean {
-    const c = this.form.controls[name];
-    return c.invalid && (c.dirty || c.touched);
-  }
-
-  onSocialLoginClick(_provider: 'google' | 'facebook'): void {
-    /* UI-only placeholder — no backend integration yet */
   }
 }

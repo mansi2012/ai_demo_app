@@ -1,26 +1,35 @@
-require('dotenv').config();
+'use strict';
 
-const toInt = (value, fallback) => {
-  const parsed = parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
-
-const config = {
+module.exports = {
   env: process.env.NODE_ENV || 'development',
-  port: toInt(process.env.PORT, 3000),
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:4200',
-  jwt: {
-    secret: process.env.JWT_SECRET || 'dev-secret-change-me',
-    expiresIn: process.env.JWT_EXPIRES_IN || '1d',
-  },
-  db: {
-    dialect: process.env.DB_DIALECT || 'mysql',
-    host: process.env.DB_HOST || '192.168.1.130',
-    port: toInt(process.env.DB_PORT, 3306),
-    database: process.env.DB_NAME,
-    username: process.env.DB_USERNAME,
-    password: process.env.DB_PASSWORD || '',
-  },
-};
+  port: process.env.PORT || 3000,
 
-module.exports = config;
+  db: {
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 3306,
+    name: process.env.DB_NAME || 'auth_demo',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || ''
+  },
+
+  jwt: {
+    secret: process.env.JWT_SECRET || 'changeme',
+    expiresIn: process.env.JWT_EXPIRES_IN || '1d'
+  },
+
+  cors: {
+    origin: process.env.CORS_ORIGIN || 'http://localhost:4200'
+  },
+
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.ethereal.email',
+    port: process.env.SMTP_PORT || 587,
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.SMTP_FROM || 'no-reply@authdemo.local'
+  },
+
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:4200',
+
+  resetTokenExpiryMinutes: Number(process.env.RESET_TOKEN_EXPIRY_MINUTES) || 1440
+};
