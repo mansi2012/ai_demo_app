@@ -3,7 +3,12 @@ import { REFINE_SYSTEM, buildRefineMessage } from './prompts/refinePrompt.js';
 import { runFrontendAgent } from './agents/frontendAgent.js';
 import { runBackendAgent } from './agents/backendAgent.js';
 import { runQAAgent } from './agents/qaAgent.js';
+import { runDesignAgent } from './agents/designAgent.js';
+import { runReviewerAgent } from './agents/reviewerAgent.js';
+import { runSecurityAgent } from './agents/securityAgent.js';
+import { runDocsAgent } from './agents/docsAgent.js';
 import { callLLM } from './utils/callLLM.js';
+import { usageTally, resetUsageTally } from './utils/claude.js';
 import { writeProjectFiles } from './utils/writeFiles.js';
 import * as cliPrompter from './utils/promptUser.js';
 import { extractJSONObject } from './utils/parseAgentJSON.js';
@@ -39,7 +44,7 @@ ${buildRefineMessage(rawTask)}
 
   let raw;
   try {
-    raw = await callLLM(prompt);
+    raw = await callLLM(prompt, { tier: 'aux' });
   } catch (err) {
     console.warn(`[orchestrator] Task refinement LLM call failed: ${err.message} — using raw task.`);
     return { refined: rawTask, notes: '(refinement call failed)' };
@@ -190,22 +195,129 @@ async function resolveMissingRequirements(plan) {
   return pairs;
 }
 
-async function dispatchImplementation(plan) {
+/**
+ * Build a "handoff" context block from a completed agent's output so that a
+ * later agent can align its work with what was actually produced.
+ * Includes the summary AND full file contents — the receiving agent needs to
+ * see exact endpoint paths, request/response shapes, and model fields.
+ */
+function buildAgentHandoff(sourceLabel, output) {
+  const files = Array.isArray(output?.files) ? output.files : [];
+  const parts = [
+    '',
+    `═══════════════════════════════════════════════════════`,
+    `CONTEXT FROM ${sourceLabel.toUpperCase()} AGENT (already finished)`,
+    `═══════════════════════════════════════════════════════`,
+    '',
+    `Summary: ${output?.summary || '(no summary provided)'}`,
+    '',
+    `${sourceLabel} produced ${files.length} file${files.length === 1 ? '' : 's'}. Full contents below — use these to match API paths, payload shapes, model fields, and component names EXACTLY:`,
+    '',
+  ];
+
+  for (const f of files) {
+    parts.push(
+      `───── ${f.action ?? 'create'}: ${f.path} ─────`,
+      f.content ?? '(no content)',
+      ''
+    );
+  }
+
+  parts.push(
+    `═══════════════════════════════════════════════════════`,
+    `END ${sourceLabel.toUpperCase()} CONTEXT`,
+    `═══════════════════════════════════════════════════════`,
+    '',
+    `Your job is to integrate with the work above, not duplicate or contradict it.`,
+    `- Reuse the exact endpoint paths, request bodies, and response shapes from any route/controller files`,
+    `- Match data model field names (camelCase on the wire, snake_case in DB is handled by Sequelize — trust what's in the code above)`,
+    `- If the ${sourceLabel} required authentication on a route, your integration must include the Bearer token`,
+    '',
+  );
+
+  return parts.join('\n');
+}
+
+/**
+ * Run backend first, then frontend with backend's output injected as context.
+ * Sequential (not parallel) so frontend can align with the actual APIs backend
+ * built. If only one is assigned, that one runs alone.
+ */
+function buildDesignHandoff(design) {
+  if (!design?.spec?.trim()) return '';
+  return [
+    '',
+    '═══════════════════════════════════════════════════════',
+    'DESIGN SPEC (from Design agent — follow this exactly)',
+    '═══════════════════════════════════════════════════════',
+    '',
+    design.spec,
+    '',
+    '═══════════════════════════════════════════════════════',
+    'END DESIGN SPEC',
+    '═══════════════════════════════════════════════════════',
+    '',
+  ].join('\n');
+}
+
+function buildReviewContext(outputs) {
+  const parts = [];
+  for (const name of ['backend', 'frontend']) {
+    const out = outputs[name];
+    if (!out || !out.files?.length) continue;
+    parts.push(`═══ ${name.toUpperCase()} ═══`);
+    parts.push(`Summary: ${out.summary || '(none)'}`);
+    parts.push('');
+    for (const f of out.files) {
+      parts.push(`───── ${f.action ?? 'create'}: ${f.path} ─────`);
+      parts.push(f.content ?? '');
+      parts.push('');
+    }
+  }
+  return parts.join('\n');
+}
+
+async function dispatchImplementation(plan, designOutput) {
   const { assigned_agents, agent_instructions } = plan;
-  const promises = {};
+  const outputs = {};
 
-  if (assigned_agents.includes('frontend') && agent_instructions.frontend) {
-    promises.frontend = runFrontendAgent(agent_instructions.frontend);
+  const hasBackend = assigned_agents.includes('backend') && agent_instructions.backend;
+  const hasFrontend = assigned_agents.includes('frontend') && agent_instructions.frontend;
+
+  // ── 1. Backend runs first (frontend may need to see its APIs) ──
+  if (hasBackend) {
+    console.log('[orchestrator] Backend agent starting…');
+    outputs.backend = await runBackendAgent(agent_instructions.backend);
+    const bFiles = outputs.backend?.files?.length ?? 0;
+    console.log(`[orchestrator] Backend agent finished — ${bFiles} file${bFiles === 1 ? '' : 's'} produced.`);
   }
-  if (assigned_agents.includes('backend') && agent_instructions.backend) {
-    promises.backend = runBackendAgent(agent_instructions.backend);
+
+  // ── 2. Frontend runs next with backend + design handoffs ──
+  if (hasFrontend) {
+    let frontendInstructions = agent_instructions.frontend;
+    if (outputs.backend) {
+      const handoff = buildAgentHandoff('Backend', outputs.backend);
+      frontendInstructions += handoff;
+      console.log(
+        `[orchestrator] Injecting backend context into frontend instructions ` +
+        `(${(handoff.length / 1024).toFixed(1)} KB).`
+      );
+    }
+    if (designOutput?.spec) {
+      const designHandoff = buildDesignHandoff(designOutput);
+      frontendInstructions += designHandoff;
+      console.log(
+        `[orchestrator] Injecting design spec into frontend instructions ` +
+        `(${(designHandoff.length / 1024).toFixed(1)} KB).`
+      );
+    }
+    console.log('[orchestrator] Frontend agent starting…');
+    outputs.frontend = await runFrontendAgent(frontendInstructions);
+    const fFiles = outputs.frontend?.files?.length ?? 0;
+    console.log(`[orchestrator] Frontend agent finished — ${fFiles} file${fFiles === 1 ? '' : 's'} produced.`);
   }
 
-  const keys = Object.keys(promises);
-  if (keys.length === 0) return {};
-
-  const results = await Promise.all(Object.values(promises));
-  return Object.fromEntries(keys.map((k, i) => [k, results[i]]));
+  return outputs;
 }
 
 function formatOutput(plan, agentOutputs, writeManifest) {
@@ -259,6 +371,16 @@ function formatOutput(plan, agentOutputs, writeManifest) {
     '',
   );
 
+  if (agentOutputs.design) {
+    lines.push('Design Agent:');
+    lines.push(`  Summary: ${agentOutputs.design.summary ?? '(none)'}`);
+    if (agentOutputs.design.spec) {
+      lines.push('  Spec:');
+      agentOutputs.design.spec.split('\n').forEach((l) => lines.push(`    ${l}`));
+    }
+    lines.push('');
+  }
+
   for (const name of ['frontend', 'backend']) {
     const out = agentOutputs[name];
     if (!out) continue;
@@ -270,6 +392,45 @@ function formatOutput(plan, agentOutputs, writeManifest) {
     } else if (Array.isArray(out.files) && out.files.length) {
       lines.push('  Files:');
       out.files.forEach(f => lines.push(`    - [${f.action ?? 'create'}] ${f.path}`));
+    }
+    lines.push('');
+  }
+
+  if (agentOutputs.reviewer) {
+    const r = agentOutputs.reviewer;
+    lines.push('Reviewer Agent:');
+    lines.push(`  Verdict: ${r.verdict ?? 'pass'}`);
+    lines.push(`  Summary: ${r.summary ?? '(none)'}`);
+    if (r.issues?.length) {
+      lines.push('  Issues:');
+      r.issues.forEach((i) =>
+        lines.push(`    - [${i.severity}] ${i.area}/${i.file}${i.line ? `:${i.line}` : ''} — ${i.rule}: ${i.message}`)
+      );
+    }
+    lines.push('');
+  }
+
+  if (agentOutputs.security) {
+    const s = agentOutputs.security;
+    lines.push('Security Agent:');
+    lines.push(`  Verdict: ${s.verdict ?? 'pass'}`);
+    lines.push(`  Summary: ${s.summary ?? '(none)'}`);
+    if (s.issues?.length) {
+      lines.push('  Issues:');
+      s.issues.forEach((i) =>
+        lines.push(`    - [${i.severity}] ${i.area}/${i.file}${i.line ? `:${i.line}` : ''} — ${i.category}: ${i.message}`)
+      );
+    }
+    lines.push('');
+  }
+
+  if (agentOutputs.docs) {
+    const d = agentOutputs.docs;
+    lines.push('Docs Agent:');
+    lines.push(`  Summary: ${d.summary ?? '(none)'}`);
+    if (d.files?.length) {
+      lines.push('  Files:');
+      d.files.forEach((f) => lines.push(`    - [${f.action ?? 'modify'}] ${f.path}`));
     }
     lines.push('');
   }
@@ -468,7 +629,39 @@ async function commitAndShareWork(writtenPaths, task, prContext) {
  * @param {string} task
  * @returns {Promise<{ plan: object, agentOutputs: object, formatted: string, writeManifest: Array }>}
  */
+// ── Rough pricing (USD per 1M tokens) — used only for the end-of-run estimate ──
+const CLAUDE_PRICE = {
+  // main-tier: Opus 4.7
+  main: { input: 15, output: 75 },
+  // aux-tier: Haiku 4.5
+  aux: { input: 0.8, output: 4 },
+};
+
+function estimateUsageCost() {
+  const m = usageTally.main;
+  const a = usageTally.aux;
+  const cost = (u, p) => (u.input * p.input + u.output * p.output) / 1_000_000;
+  return {
+    main: { ...m, costUSD: cost(m, CLAUDE_PRICE.main) },
+    aux: { ...a, costUSD: cost(a, CLAUDE_PRICE.aux) },
+    totalUSD: cost(m, CLAUDE_PRICE.main) + cost(a, CLAUDE_PRICE.aux),
+  };
+}
+
+function printUsageReport() {
+  const u = estimateUsageCost();
+  const line = (label, t, cost) =>
+    `  ${label}: ${t.calls} call${t.calls === 1 ? '' : 's'}, ` +
+    `in ${t.input.toLocaleString()} / out ${t.output.toLocaleString()} tokens ` +
+    `≈ $${cost.toFixed(4)}`;
+  console.log('\n[orchestrator] Token usage this run:');
+  console.log(line('main (backend/frontend/qa/planner)', u.main, u.main.costUSD));
+  console.log(line('aux  (design/reviewer/security/docs/refine)', u.aux, u.aux.costUSD));
+  console.log(`  TOTAL ≈ $${u.totalUSD.toFixed(4)}`);
+}
+
 export async function orchestrate(rawTask, opts = {}) {
+  resetUsageTally();
   const { closesIssue } = opts;
   const { task, refinement } = await confirmRefinedTask(rawTask);
 
@@ -483,16 +676,23 @@ export async function orchestrate(rawTask, opts = {}) {
     plan._clarifications = clarifications;
   }
 
-  // ── Phase 1 — Implementation (frontend + backend in parallel) ──
   const implAssigned = plan.assigned_agents.some(a => a === 'frontend' || a === 'backend');
+  const hasFrontend = plan.assigned_agents.includes('frontend') && plan.agent_instructions.frontend;
   const agentOutputs = {};
 
-  if (implAssigned) {
-    console.log('[orchestrator] Phase 1 — implementation (frontend + backend)...');
-    Object.assign(agentOutputs, await dispatchImplementation(plan));
+  // ── Phase 0 — Design spec (runs before frontend so it can align) ──
+  if (hasFrontend && process.env.SKIP_DESIGN !== 'true') {
+    console.log('\n[orchestrator] Phase 0 — design spec...');
+    agentOutputs.design = await runDesignAgent(plan.agent_instructions.frontend);
   }
 
-  // ── Write files to disk so QA can see what actually landed ──
+  // ── Phase 1 — Implementation (backend → frontend, sequential with handoff) ──
+  if (implAssigned) {
+    console.log('\n[orchestrator] Phase 1 — implementation...');
+    Object.assign(agentOutputs, await dispatchImplementation(plan, agentOutputs.design));
+  }
+
+  // ── Write impl files to disk ──
   const filesToWrite = [];
   for (const agentName of ['frontend', 'backend']) {
     const out = agentOutputs[agentName];
@@ -511,6 +711,53 @@ export async function orchestrate(rawTask, opts = {}) {
     });
   } else if (implAssigned) {
     console.log('\n[orchestrator] No files produced by frontend/backend.');
+  }
+
+  // ── Phase 1.5 — Reviewer + Security + Docs (parallel, all read the same context) ──
+  const landedNow = writeManifest.some(f => f.status === 'created' || f.status === 'modified');
+  if (landedNow) {
+    const reviewContext = buildReviewContext(agentOutputs);
+    const postImpl = [];
+    const labels = [];
+
+    if (process.env.SKIP_REVIEW !== 'true') {
+      postImpl.push(runReviewerAgent(reviewContext));
+      labels.push('reviewer');
+    }
+    if (process.env.SKIP_SECURITY !== 'true') {
+      postImpl.push(runSecurityAgent(reviewContext));
+      labels.push('security');
+    }
+    if (process.env.SKIP_DOCS !== 'true') {
+      postImpl.push(runDocsAgent(reviewContext));
+      labels.push('docs');
+    }
+
+    if (postImpl.length) {
+      console.log(`\n[orchestrator] Phase 1.5 — post-implementation (${labels.join(' + ')})...`);
+      const results = await Promise.all(postImpl);
+      labels.forEach((name, i) => { agentOutputs[name] = results[i]; });
+
+      if (agentOutputs.reviewer) {
+        const r = agentOutputs.reviewer;
+        console.log(`[orchestrator] Review verdict: ${r.verdict} — ${r.issues.length} issue${r.issues.length === 1 ? '' : 's'}`);
+      }
+      if (agentOutputs.security) {
+        const s = agentOutputs.security;
+        console.log(`[orchestrator] Security verdict: ${s.verdict} — ${s.issues.length} issue${s.issues.length === 1 ? '' : 's'}`);
+      }
+
+      // Docs agent produces files too — write them
+      if (agentOutputs.docs?.files?.length) {
+        const docFilesToWrite = agentOutputs.docs.files.map((f) => ({ agent: 'docs', ...f }));
+        console.log(`\n[orchestrator] Writing ${docFilesToWrite.length} doc file(s)...`);
+        const docManifest = writeProjectFiles(docFilesToWrite);
+        docManifest.forEach((f) => {
+          console.log(`  [docs] ${f.status}: ${f.path}${f.reason ? ` — ${f.reason}` : ''}`);
+        });
+        writeManifest = writeManifest.concat(docManifest);
+      }
+    }
   }
 
   // ── Phase 2 — QA, only if there's something to test ──
@@ -573,5 +820,6 @@ export async function orchestrate(rawTask, opts = {}) {
     );
   }
 
-  return { plan, agentOutputs, formatted, writeManifest };
+  printUsageReport();
+  return { plan, agentOutputs, formatted, writeManifest, usage: estimateUsageCost() };
 }

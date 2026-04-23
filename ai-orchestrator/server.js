@@ -132,8 +132,44 @@ function createWebPrompter(run) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Issues — gh CLI if available, fallback to public REST API.
+// Issues — authenticated REST first (UI token / env), then gh CLI,
+// then unauthenticated public REST. Order maximises "private repos work".
 // ─────────────────────────────────────────────────────────────
+
+/** Extract a GitHub token from the incoming request header, or .env fallback. */
+function resolveGithubToken(req) {
+  const hdr = req.headers.authorization || '';
+  // Accept both "Bearer <token>" and "token <token>" forms for convenience
+  const m = hdr.match(/^(?:Bearer|token)\s+(\S+)$/i);
+  if (m) return m[1];
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  return null;
+}
+
+async function fetchIssuesViaRest(repo, token) {
+  const url = `https://api.github.com/repos/${repo}/issues?state=open&per_page=50`;
+  const headers = { Accept: 'application/vnd.github+json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const r = await fetch(url, { headers });
+  if (!r.ok) {
+    const text = await r.text();
+    const err = new Error(`GitHub API ${r.status}: ${text}`);
+    err.status = r.status;
+    throw err;
+  }
+  const issues = await r.json();
+  return issues
+    .filter((i) => !i.pull_request)
+    .map((i) => ({
+      number: i.number,
+      title: i.title,
+      body: i.body ?? '',
+      url: i.html_url,
+      labels: (i.labels || []).map((l) => l.name),
+    }));
+}
+
 function fetchIssuesViaGh(repo) {
   const check = spawnSync('gh', ['--version'], { encoding: 'utf-8' });
   if (check.error || check.status !== 0) return null;
@@ -156,36 +192,56 @@ function fetchIssuesViaGh(repo) {
   }));
 }
 
-async function fetchIssuesViaRest(repo) {
-  const url = `https://api.github.com/repos/${repo}/issues?state=open&per_page=50`;
-  const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
-  if (!r.ok) {
-    const text = await r.text();
-    throw new Error(`GitHub API ${r.status}: ${text}`);
-  }
-  const issues = await r.json();
-  return issues
-    .filter((i) => !i.pull_request)
-    .map((i) => ({
-      number: i.number,
-      title: i.title,
-      body: i.body ?? '',
-      url: i.html_url,
-      labels: (i.labels || []).map((l) => l.name),
-    }));
-}
-
 app.get('/api/issues', async (req, res) => {
   const repo = String(req.query.repo || '').trim();
   if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
     return res.status(400).json({ error: 'repo must be in the form owner/name' });
   }
+  const token = resolveGithubToken(req);
+
+  // 1. Authenticated REST (UI-supplied token / env) — best for private repos
+  if (token) {
+    try {
+      const issues = await fetchIssuesViaRest(repo, token);
+      return res.json({ source: 'rest-auth', issues, authenticated: true });
+    } catch (err) {
+      if (err.status === 401) {
+        return res.status(401).json({
+          error: 'GitHub rejected the token (invalid or expired). Update it and try again.',
+          authRequired: true,
+        });
+      }
+      if (err.status === 404) {
+        return res.status(404).json({
+          error: `Repo '${repo}' not found. Either the name is wrong or the token lacks access to it.`,
+          authRequired: true,
+        });
+      }
+      // Fall through to other methods on unknown REST errors
+      console.warn(`[issues] authenticated REST failed, trying fallbacks: ${err.message}`);
+    }
+  }
+
+  // 2. gh CLI — uses the OS keychain; works for private if user ran `gh auth login`
   try {
     const viaGh = fetchIssuesViaGh(repo);
-    if (viaGh) return res.json({ source: 'gh', issues: viaGh });
-    const viaRest = await fetchIssuesViaRest(repo);
-    return res.json({ source: 'rest', issues: viaRest });
+    if (viaGh) return res.json({ source: 'gh', issues: viaGh, authenticated: true });
   } catch (err) {
+    console.warn(`[issues] gh CLI path failed, trying unauthenticated REST: ${err.message}`);
+  }
+
+  // 3. Unauthenticated REST — public repos only
+  try {
+    const issues = await fetchIssuesViaRest(repo, null);
+    return res.json({ source: 'rest-public', issues, authenticated: false });
+  } catch (err) {
+    if (err.status === 404) {
+      return res.status(404).json({
+        error:
+          `Repo '${repo}' not found via the public API. If it's private, add a token (UI input or GITHUB_TOKEN env).`,
+        authRequired: true,
+      });
+    }
     return res.status(500).json({ error: err.message });
   }
 });

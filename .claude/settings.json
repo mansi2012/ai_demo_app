@@ -25,7 +25,15 @@
       "Bash(git rev-list *)",
       "Bash(sed -n '7,16p' .gitignore)",
       "Bash(echo \"\\(exit: $?\\)\")",
-      "Bash(grep \"\\\\.env\\\\.example$\")"
+      "Bash(grep \"\\\\.env\\\\.example$\")",
+      "Bash(node --check agents/designAgent.js)",
+      "Bash(node --check agents/reviewerAgent.js)",
+      "Bash(node --check agents/securityAgent.js)",
+      "Bash(node --check agents/docsAgent.js)",
+      "Bash(grep -n \"return { plan, agentOutputs\" \"d:/2026/AI PROJECTS/simple_demo_app/ai-orchestrator/orchestrator.js\")",
+      "Bash(node --check utils/callLLM.js)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

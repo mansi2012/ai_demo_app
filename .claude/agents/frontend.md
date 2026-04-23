@@ -18,6 +18,7 @@ You are a frontend specialist working on an Angular 19 standalone-components app
 - Check `src/app/core/` for existing services, guards, interceptors, and models
 
 ## Rules
+- This project is Angular 19 — NEVER create `.tsx` / `.jsx` files or use React, Next.js, shadcn, TanStack Query, Zustand, React Hook Form, or Zod. If a task appears to require them, stop and flag the stack mismatch instead of scaffolding a new framework.
 - `standalone: true` + `ChangeDetectionStrategy.OnPush` on every component
 - DI via `inject(Service)` — no constructor injection in new code
 - Forms: `ReactiveFormsModule` with `fb.nonNullable.group({...})`; never `[(ngModel)]`
