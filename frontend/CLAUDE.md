@@ -4,104 +4,108 @@ Conventions for the `frontend/` directory. Read this before writing or editing c
 
 ## Stack
 
-- Angular 19 — standalone components only (no NgModules)
-- TypeScript strict mode
+- Next.js 15 (App Router) — TypeScript strict mode
+- React 19 — functional components only
 - Tailwind CSS v3 (classic `@tailwind base; @tailwind components; @tailwind utilities;` syntax)
-- Reactive Forms (`ReactiveFormsModule`, `FormBuilder.nonNullable`)
-- Signals for local/derived state
-- `HttpClient` with functional interceptors
-- RxJS only where async streams actually help (HTTP, events)
+- React Hook Form + Zod for form validation (client-side)
+- Zustand for global state (auth)
+- `fetch` / custom HTTP client for API calls with Bearer auth interceptor
 
 ## Directory layout
 
 ```
 frontend/
-├── angular.json
-├── tailwind.config.js
+├── next.config.js
+├── tailwind.config.ts
 ├── postcss.config.js
-├── tsconfig.json / tsconfig.app.json
+├── tsconfig.json
 └── src/
-    ├── index.html
-    ├── main.ts                    # bootstrapApplication(AppComponent, appConfig)
-    ├── styles.css                 # @tailwind directives + @layer components (.btn-*, .form-*, .card)
-    ├── environments/
-    │   ├── environment.ts                  # production
-    │   └── environment.development.ts      # { apiUrl: 'http://localhost:3000/api' }
-    └── app/
-        ├── app.component.ts       # top-level, just <router-outlet />
-        ├── app.config.ts          # provideRouter, provideHttpClient, interceptors
-        ├── app.routes.ts          # lazy loadComponent + guards
-        ├── core/
-        │   ├── services/          # AuthService (signals-based)
-        │   ├── guards/            # authGuard, guestGuard (functional CanActivateFn)
-        │   ├── interceptors/      # authInterceptor (functional)
-        │   └── models/            # shared TS interfaces (User, AuthResponse, ApiErrorBody, ...)
-        ├── shared/                # reusable standalone components (e.g. AuthShellComponent)
-        └── pages/
-            ├── login/
-            ├── register/
-            └── home/
+    ├── app/
+    │   ├── layout.tsx                 # root layout (metadata, providers)
+    │   ├── (auth)/                    # route group for login/register
+    │   │   ├── login/
+    │   │   │   └── page.tsx           # login form + SocialLoginButtons
+    │   │   ├── register/
+    │   │   │   └── page.tsx           # registration form
+    │   │   └── layout.tsx             # optional: shared auth layout
+    │   └── dashboard/
+    │       └── page.tsx               # protected dashboard
+    ├── components/
+    │   ├── auth/
+    │   │   └── SocialLoginButtons.tsx # Google + Facebook button stubs
+    │   └── shared/                    # reusable components
+    ├── lib/
+    │   ├── api-client.ts              # fetch wrapper with Bearer interceptor
+    │   ├── stores/
+    │   │   └── auth-store.ts          # Zustand auth store (user, token, login/logout)
+    │   └── utils/
+    ├── styles/
+    │   └── globals.css                # @tailwind + @layer components
+    └── middleware.ts                  # optional: Next.js middleware for auth checks
 ```
 
 ## Component conventions
 
-- Every component has:
-  - `standalone: true`
-  - `changeDetection: ChangeDetectionStrategy.OnPush`
-  - `imports: [...]` with only what the template uses
-- Use `templateUrl` / separate `.html` file once the template is more than a few lines; inline `template: \`...\`` is fine for trivial cases (e.g. `AppComponent`, `AuthShellComponent`)
-- DI via `private readonly svc = inject(Service)` — no constructor injection
-- Local state via `signal()` / `computed()`; expose read-only signals to templates (`readonly user = this._user.asReadonly()`)
-- Templates use `@if`, `@for`, `@switch` — not `*ngIf` / `*ngFor`
+- Every component is a function component with `'use client'` at the top (since we use client-side state / forms)
+- Use `React.ReactNode` / `React.ReactElement` for typing children and JSX returns
+- DI via props or global stores (Zustand) — no circular imports
+- Forms use `react-hook-form` + `Zod` validators
+  - Register inputs with `{...register('fieldName')}`
+  - Display field errors only after the field is touched/dirty
+  - Use `zod` schema to validate shape; `react-hook-form` applies it via `zodResolver`
+- Reuse Tailwind component classes from `src/styles/globals.css` (`.btn`, `.btn-primary`, `.form-input`, `.card`, etc.)
 
-## Routing
+## Routing (Next.js App Router)
 
-- Every page is lazy-loaded in `app.routes.ts` via `loadComponent: () => import(...)`
-- Guards are functional (`CanActivateFn`) and return a `UrlTree` (`router.createUrlTree([...])`) for redirects — not `false`
-- Use `authGuard` for protected routes, `guestGuard` for login/register (redirects logged-in users away)
-- `provideRouter(appRoutes, withComponentInputBinding())` in `app.config.ts` — component inputs bind to route params automatically
+- Use route groups `(auth)`, `(dashboard)` to organize pages without affecting URL structure
+- Protected routes (e.g., `/dashboard`) should check auth state in the page component or via a wrapper; a middleware can also redirect to `/login` if no token
+- Lazy loading happens automatically; use `dynamic()` from `next/dynamic` for large components if needed
+- Route params are passed to page components via `params` and `searchParams` props
 
 ## Forms
 
-- Reactive forms only — `fb.nonNullable.group({...})` so values are strictly non-null
-- Validators on the client (`Validators.required`, `Validators.minLength`, ...) for UX, but the backend is the source of truth
-- When the server returns field-level errors in `details: [{ field, message }]`, map them onto the corresponding form controls (see `RegisterComponent.controlError` for the pattern)
-- Show validation errors only after the control is touched/dirty
+- Use `react-hook-form` with `useForm<T>()` where `T` is typed by `Zod.infer<typeof schema>`
+- Validators in a `const schema = z.object({...})` at the top of the file or in a separate `validators/` file
+- Pass `zodResolver(schema)` to `useForm()` for automatic validation
+- Wire form with `handleSubmit(onSubmit)` on the form element
+- Show field-level errors from `errors.<field>?.message` only if `isDirty` or `isTouched`
+- For server-side errors (e.g., "email already exists"), use `setError('root', { message: "..." })` to show a banner
 
 ## HTTP / API
 
-- All HTTP calls go through a service under `src/app/core/services/`, never from a component directly
-- Base URL comes from `environment.apiUrl` — never hardcode `http://localhost:...`
-- Auth token is attached by `authInterceptor` (registered in `app.config.ts` via `withInterceptors([authInterceptor])`)
-- 401 responses trigger `auth.logout()` + redirect to `/login` (already wired in `authInterceptor` — don't duplicate)
-- Shared response types (`ApiSuccess<T>`, `ApiErrorBody`) live in `src/app/core/models/user.model.ts`
+- All API calls go through `src/lib/api-client.ts` (a `fetch` wrapper)
+- Base URL comes from env (see `next.config.js` / `.env.local`) — never hardcode localhost
+- Bearer token is attached automatically by the `apiClient` interceptor; it reads from Zustand store
+- 401 responses trigger `authStore.logout()` + redirect to `/login` (wired in `api-client.ts`)
+- Request/response shapes (User, AuthResponse, etc.) are typed in `src/lib/models.ts` or co-located with the store
 
-## Auth state
+## Auth state (Zustand)
 
-- Single source of truth: `AuthService` (`src/app/core/services/auth.service.ts`)
+- Single source of truth: `src/lib/stores/auth-store.ts`
 - Exposes:
-  - `user` — read-only signal of the current `User | null`
-  - `isAuthenticated` — computed signal
-  - `getToken()` — for the interceptor
-- Components read auth state via these signals — never touch `localStorage` directly
-- `login()` / `register()` / `logout()` handle persistence internally
+  - `user` — current `User | null`
+  - `accessToken` — the JWT string (or null)
+  - `isAuthenticated` — boolean computed from `user !== null`
+  - `setAuth(user, token)` — called after successful login/register
+  - `logout()` — clears state and localStorage
+- Hydrate on mount from `localStorage` (handle SSR gracefully with `useEffect`)
+- Components read auth state via `useAuthStore()` hook — never access `localStorage` directly
 
 ## Styling
 
-- Tailwind v3 with shared `@layer components` classes in `src/styles.css`:
+- Tailwind v3 with shared `@layer components` classes in `src/styles/globals.css`:
   - `.btn`, `.btn-primary`, `.btn-ghost`
   - `.form-input`, `.form-label`, `.form-error`
   - `.card`
-- Reuse these before writing long utility strings; add new ones to `styles.css` when a pattern repeats
-- Colors only from the `brand` palette in `tailwind.config.js` + Tailwind's defaults (`slate`, `rose`, etc.) — no hardcoded hex/rgb
+- Reuse these before writing long utility strings; add new ones to `globals.css` when a pattern repeats
+- Colors only from the `brand` palette in `tailwind.config.ts` + Tailwind's defaults (`slate`, `rose`, etc.)
 - Every interactive element needs a visible focus ring (built into `.btn` and `.form-input`)
-- See [.claude/rules/styling-rules.md](../.claude/rules/styling-rules.md) for the full list
+- Use `aria-label`, `aria-live`, `role` attributes for accessibility
 
 ## Adding a new page
 
-Use the `/new-page` command, or follow [.claude/commands/new-page.md](../.claude/commands/new-page.md):
-
-1. `src/app/pages/<name>/<name>.component.ts` (+ `.component.html`)
-2. Register in `app.routes.ts` with `loadComponent` and the correct guard
-3. If the page calls the backend, add methods to a service in `core/services/`
-4. If new request/response shapes appear, add interfaces in `core/models/`
+1. Create `src/app/<route>/page.tsx` (optionally under a route group like `(auth)`)
+2. Mark it `'use client'` if it uses state, forms, or client-side interactions
+3. If it calls the backend, add methods to `src/lib/stores/auth-store.ts` or a new service file
+4. If new request/response shapes appear, add interfaces in `src/lib/models.ts`
+5. Update the routing table in `frontend/README.md`

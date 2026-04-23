@@ -1,31 +1,21 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useMutation } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuthStore } from '@/lib/stores/auth-store';
 import { apiClient } from '@/lib/api-client';
-import { useAuthStore } from '@/stores/auth-store';
 import SocialLoginButtons from '@/components/auth/SocialLoginButtons';
 
 const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Enter a valid email'),
+  email: z.string().email('Please enter a valid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
-
-type LoginResponse = {
-  accessToken: string;
-  user: {
-    id: string;
-    email: string;
-    name?: string;
-  };
-};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,96 +28,162 @@ export default function LoginPage() {
     setError,
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: {
+      email: '',
+      password: '',
+    },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (values: LoginFormValues) => {
-      return apiClient.post<LoginResponse>('/auth/login', values);
-    },
-    onSuccess: (data) => {
+  const onSubmit = async (values: LoginFormValues) => {
+    try {
+      const data = await apiClient.post<{ accessToken: string; user: Record<string, unknown> }>(
+        '/auth/login',
+        values
+      );
       setAuth({ accessToken: data.accessToken, user: data.user });
       router.push('/dashboard');
-    },
-    onError: (err: unknown) => {
+    } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : 'Invalid email or password';
+        err instanceof Error ? err.message : 'Invalid email or password. Please try again.';
       setError('root', { message });
-    },
-  });
-
-  const onSubmit = handleSubmit((values) => loginMutation.mutate(values));
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-8">
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl font-semibold text-gray-900">Sign in to LocalChat</h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Welcome back. Please enter your details.
-            </p>
-          </div>
+    <div className='min-h-screen flex items-center justify-center bg-slate-50 px-4 py-12'>
+      <div className='w-full max-w-md'>
+        {/* Header */}
+        <div className='text-center mb-8'>
+          <h1 className='text-2xl font-bold text-brand-700'>Sign In</h1>
+          <p className='mt-2 text-sm text-slate-500'>Welcome back — sign in to your account</p>
+        </div>
 
-          <SocialLoginButtons />
+        {/* Card */}
+        <div className='card bg-white shadow-sm rounded-xl p-8'>
+          <form onSubmit={handleSubmit(onSubmit)} noValidate>
+            {/* Root / server error */}
+            {errors.root && (
+              <div
+                className='mb-4 rounded-lg bg-rose-50 border border-rose-200 p-3'
+                role='alert'
+                aria-live='polite'
+              >
+                <p className='text-sm text-rose-700'>{errors.root.message}</p>
+              </div>
+            )}
 
-          <div className="my-6 flex items-center gap-3" role="separator" aria-label="Or continue with email">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-xs uppercase tracking-wide text-gray-500">
-              Or continue with email
-            </span>
-            <div className="h-px flex-1 bg-gray-200" />
-          </div>
-
-          <form onSubmit={onSubmit} className="space-y-4" noValidate>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
+            {/* Email field */}
+            <div className='mb-4'>
+              <label htmlFor='email' className='form-label block text-sm font-medium text-slate-700 mb-1'>
+                Email address
               </label>
               <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                className="mt-1 block w-full h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                id='email'
+                type='email'
+                autoComplete='email'
+                required
+                disabled={isSubmitting}
+                className={`form-input w-full rounded-lg border px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1 transition-colors ${
+                  errors.email
+                    ? 'border-rose-400 bg-rose-50'
+                    : 'border-slate-300 bg-white hover:border-slate-400'
+                } disabled:opacity-60 disabled:cursor-not-allowed`}
+                placeholder='you@example.com'
                 {...register('email')}
               />
               {errors.email && (
-                <p className="mt-1 text-xs text-red-600">{errors.email.message}</p>
+                <p className='form-error mt-1 text-xs text-rose-600' role='alert'>
+                  {errors.email.message}
+                </p>
               )}
             </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
+            {/* Password field */}
+            <div className='mb-2'>
+              <div className='flex items-center justify-between mb-1'>
+                <label
+                  htmlFor='password'
+                  className='form-label block text-sm font-medium text-slate-700'
+                >
+                  Password
+                </label>
+                <Link
+                  href='/forgot-password'
+                  className='text-xs text-brand-600 hover:text-brand-700 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500 rounded'
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                className="mt-1 block w-full h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300"
+                id='password'
+                type='password'
+                autoComplete='current-password'
+                required
+                disabled={isSubmitting}
+                className={`form-input w-full rounded-lg border px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-1 transition-colors ${
+                  errors.password
+                    ? 'border-rose-400 bg-rose-50'
+                    : 'border-slate-300 bg-white hover:border-slate-400'
+                } disabled:opacity-60 disabled:cursor-not-allowed`}
+                placeholder='Enter your password'
                 {...register('password')}
               />
               {errors.password && (
-                <p className="mt-1 text-xs text-red-600">{errors.password.message}</p>
+                <p className='form-error mt-1 text-xs text-rose-600' role='alert'>
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
-            {errors.root?.message && (
-              <p className="text-sm text-red-600">{errors.root.message}</p>
-            )}
+            {/* Submit button */}
+            <div className='mt-6'>
+              <button
+                type='submit'
+                disabled={isSubmitting}
+                className='btn-primary w-full rounded-lg py-2.5 px-4 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 transition-colors duration-150 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2'
+              >
+                {isSubmitting ? (
+                  <>
+                    <svg
+                      className='animate-spin h-4 w-4 text-white'
+                      xmlns='http://www.w3.org/2000/svg'
+                      fill='none'
+                      viewBox='0 0 24 24'
+                      aria-hidden='true'
+                    >
+                      <circle
+                        className='opacity-25'
+                        cx='12'
+                        cy='12'
+                        r='10'
+                        stroke='currentColor'
+                        strokeWidth='4'
+                      />
+                      <path
+                        className='opacity-75'
+                        fill='currentColor'
+                        d='M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z'
+                      />
+                    </svg>
+                    Signing in...
+                  </>
+                ) : (
+                  'Sign In'
+                )}
+              </button>
+            </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting || loginMutation.isPending}
-              className="w-full inline-flex items-center justify-center h-11 px-4 rounded-lg bg-gray-900 text-white text-sm font-medium shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-700 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {isSubmitting || loginMutation.isPending ? 'Signing in...' : 'Sign in'}
-            </button>
+            {/* Social login buttons — below submit, above sign-up link */}
+            <SocialLoginButtons />
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-600">
+          {/* Footer sign-up link */}
+          <p className='mt-6 text-center text-sm text-slate-500'>
             Don&apos;t have an account?{' '}
-            <Link href="/signup" className="font-medium text-gray-900 hover:underline">
+            <Link
+              href='/register'
+              className='font-medium text-brand-600 hover:text-brand-700 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500 rounded'
+            >
               Sign up
             </Link>
           </p>

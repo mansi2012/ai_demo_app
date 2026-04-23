@@ -1,16 +1,16 @@
-# Frontend — Angular + Tailwind CSS
+# Frontend — Next.js + Tailwind CSS
 
-Standalone Angular app with reactive forms, signals, route guards, and an HTTP interceptor for Bearer auth.
+Standalone Next.js app with React Hook Form, Zod validation, and an HTTP client with Bearer auth.
 
 ## Setup
 
 ```bash
 cd frontend
 npm install
-npm start
+npm run dev
 ```
 
-Open `http://localhost:4200`. In development, the app talks to the backend at `http://localhost:3000/api` (see [src/environments/environment.development.ts](src/environments/environment.development.ts)).
+Open `http://localhost:3000`. In development, the app talks to the backend at `http://localhost:3000/api` (see [src/lib/api-client.ts](src/lib/api-client.ts)).
 
 ## Structure
 
@@ -18,34 +18,34 @@ Open `http://localhost:4200`. In development, the app talks to the backend at `h
 frontend/
 ├── src/
 │   ├── app/
-│   │   ├── core/
-│   │   │   ├── guards/         # authGuard, guestGuard
-│   │   │   ├── interceptors/   # Bearer-token interceptor
-│   │   │   ├── models/         # shared TS interfaces
-│   │   │   └── services/       # AuthService (signals-based)
-│   │   ├── pages/
+│   │   ├── (auth)/
 │   │   │   ├── login/
-│   │   │   ├── register/
-│   │   │   └── home/
-│   │   ├── shared/             # AuthShellComponent
-│   │   ├── app.component.ts
-│   │   ├── app.config.ts
-│   │   └── app.routes.ts
-│   ├── environments/
-│   ├── index.html
-│   ├── main.ts
-│   └── styles.css              # @tailwind directives + component classes
-├── angular.json
-├── tailwind.config.js
-└── postcss.config.js
+│   │   │   │   └── page.tsx
+│   │   │   └── register/
+│   │   │       └── page.tsx
+│   │   ├── dashboard/
+│   │   │   └── page.tsx
+│   │   └── layout.tsx
+│   ├── components/
+│   │   └── auth/
+│   │       └── SocialLoginButtons.tsx
+│   ├── lib/
+│   │   ├── api-client.ts        # HTTP client with Bearer interceptor
+│   │   └── stores/
+│   │       └── auth-store.ts    # Zustand auth state
+│   ├── styles/
+│   │   └── globals.css          # @tailwind directives + component classes
+│   └── middleware.ts
+├── tailwind.config.ts
+├── postcss.config.js
+└── next.config.js
 ```
 
 ## Routing
 
-| Route       | Guard        | Component        |
-| ----------- | ------------ | ---------------- |
-| `/login`    | `guestGuard` | `LoginComponent` |
-| `/register` | `guestGuard` | `RegisterComponent` |
-| `/home`     | `authGuard`  | `HomeComponent`  |
-| `/`         | —            | Redirects to `/home` |
-| `**`        | —            | Redirects to `/home` |
+| Route         | Component              | Notes                                    |
+| ------------- | ---------------------- | ---------------------------------------- |
+| `/login`      | `LoginPage`            | Email/password form with social buttons  |
+| `/register`   | `RegisterPage`         | Sign-up form                             |
+| `/dashboard`  | `DashboardPage`        | Protected route (requires auth)          |
+| `/`           | Redirects to `/login`  | —                                        |
