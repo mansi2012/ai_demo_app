@@ -49,3 +49,10 @@ frontend/
 | `/home`     | `authGuard`  | `HomeComponent`  |
 | `/`         | —            | Redirects to `/home` |
 | `**`        | —            | Redirects to `/home` |
+
+## Login Page
+
+The login page (`/login`) includes:
+- Social login buttons (Google & Facebook) with inline SVGs, rendered via Angular Material `mat-stroked-button` and `MatIconRegistry`
+- Email/password form with client-side validation
+- Server error handling with per-field error display
