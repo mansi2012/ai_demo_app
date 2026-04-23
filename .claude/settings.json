@@ -18,7 +18,14 @@
       "Bash(curl -sS -o /dev/null -w \"GET / %{http_code} \\(%{size_download} bytes\\)\\\\n\" http://localhost:3500/)",
       "Bash(curl -sS http://localhost:3500/)",
       "Bash(node --check utils/promptUser.js)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch ai-orchestrator/.env' 6e172ac..develop)",
+      "Bash(git stash *)",
+      "Bash(git ls-tree *)",
+      "Bash(git rev-list *)",
+      "Bash(sed -n '7,16p' .gitignore)",
+      "Bash(echo \"\\(exit: $?\\)\")",
+      "Bash(grep \"\\\\.env\\\\.example$\")"
     ]
   }
 }
