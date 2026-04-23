@@ -31,9 +31,3 @@
     @apply bg-white rounded-xl border border-slate-200 shadow-sm p-6;
   }
 }
-
-/* Ensure Angular Material mat-icon SVGs render correctly */
-.mat-icon svg {
-  width: 100%;
-  height: 100%;
-}

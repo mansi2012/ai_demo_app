@@ -50,4 +50,8 @@ export class LoginComponent {
     const c = this.form.controls[name];
     return c.invalid && (c.dirty || c.touched);
   }
+
+  onSocialLoginClick(_provider: 'google' | 'facebook'): void {
+    /* UI-only placeholder — no backend integration yet */
+  }
 }
